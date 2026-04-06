@@ -6,7 +6,7 @@ A production-ready multi-tenant SaaS ERP system for installment-based electronic
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Laravel 11, PHP 8.2 |
+| Backend | Laravel 12, PHP 8.2 |
 | Frontend | React 19, Vite 8 |
 | Database | MySQL (مُعدّ محليًا) — يمكن استخدام SQLite للتجربة السريعة |
 | Auth | Laravel Sanctum (token-based) |
@@ -27,7 +27,8 @@ erp_sys_cp/
 │   │   │   ├── Requests/           # Form Request validations
 │   │   │   └── Resources/          # API Resource transformers
 │   │   ├── Models/                 # All Eloquent models
-│   │   └── Services/               # Business logic services
+│   │   ├── Services/               # Business logic services
+│   │   └── Support/                # TenantSettings helpers
 │   ├── database/
 │   │   ├── migrations/             # All DB migrations
 │   │   └── seeders/                # Demo data seeders
@@ -43,7 +44,8 @@ erp_sys_cp/
         ├── hooks/         # Custom hooks
         ├── i18n/          # Arabic & English translations
         ├── pages/         # All page components
-        └── utils/         # format helpers
+        ├── constants/     # Shared constants (e.g. installment duration presets)
+        └── utils/         # format helpers (currency, dates, numbers)
 ```
 
 ## Getting Started
@@ -138,6 +140,8 @@ npm run dev
 | GET /api/reports/overdue-installments | Overdue report |
 | GET /api/reports/branch-performance | Branch stats |
 | GET /api/reports/agent-performance | Agent stats |
+| GET /api/settings | Tenant key/value settings (JSON) |
+| PUT /api/settings | Update tenant settings (`body.settings` object) |
 
 ## Roles & Permissions
 
@@ -159,7 +163,7 @@ Core tables:
 - `customers` - Customer profiles
 - `guarantors` - Customer guarantors
 - `customer_documents` - Uploaded docs
-- `products` - Product catalog
+- `products` - Product catalog (`cash_price`, `installment_price`, optional `cost_price`, `min_down_payment`, `allowed_durations`, `monthly_percent_of_cash`, `fixed_monthly_amount`, …)
 - `categories` / `brands` - Product taxonomy
 - `inventories` - Stock per branch
 - `stock_movements` - Stock audit log
@@ -183,10 +187,25 @@ Core tables:
 4. If installment: convert to contract
 
 ### Contract Flow
-1. Approved installment order → Create contract → Enter down payment & duration
-2. System auto-calculates monthly installment
-3. System auto-generates full payment schedule
-4. Stock deducted, order marked as "converted"
+1. Approved installment order → **Convert to contract** → Enter **down payment**, **duration (months)**, dates.
+2. **Monthly installment** is computed server-side from tenant **installment pricing mode** and product lines (see below). **Financed amount** = monthly × duration. **Expected down payment** = order total − financed amount; the entered down payment must match (within a small tolerance) or the API returns 422.
+3. Contract stores `down_payment` and `financed_amount`; **schedule & remaining balance** track the financed portion only (down payment is not applied as a schedule line).
+4. System generates the full installment schedule; stock is deducted; order status → `converted_to_contract`.
+
+### Installment pricing (tenant + products)
+
+Configured under **Settings** (`installment_pricing_mode`):
+
+| Mode | Behaviour |
+|------|-----------|
+| **percentage** (default) | Monthly installment = weighted % of **cash** line totals; per-product override `monthly_percent_of_cash`, else tenant default `installment_monthly_percent_of_cash`. |
+| **fixed** | Monthly installment = sum of (per-line `fixed_monthly_amount` × qty); products require min down payment and allowed durations; `installment_price` can be derived on save. |
+
+**UI:** contract duration uses quick presets (e.g. 3, 4, 5, 6, 12 months) plus manual entry (validated **max 60** months, aligned with `StoreContractRequest`). Product “allowed durations” uses the same preset idea plus optional custom months.
+
+### Display: numbers in Arabic UI
+
+Currency, dates, and numeric labels use **`Intl`** with **`numberingSystem: 'latn'`** (`frontend/src/utils/format.js`) so digits show as **0–9 (Western)** even when the interface language is Arabic.
 
 ### Collection Flow
 1. View due today / overdue schedules
@@ -202,6 +221,7 @@ Core tables:
 - Switch via language button in topbar
 - All UI labels, statuses, and messages are translatable
 - i18n files: `frontend/src/i18n/ar.js` and `frontend/src/i18n/en.js`
+- Formatted amounts and dates use Latin digits (see **Display: numbers in Arabic UI** above)
 
 ## MySQL — تشغيل محلي (Local)
 
