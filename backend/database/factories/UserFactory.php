@@ -27,10 +27,30 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            'tenant_id' => null,
+            'branch_id' => null,
+            'is_super_admin' => false,
+            'is_active' => true,
         ];
+    }
+
+    public function superAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_super_admin' => true,
+            'tenant_id' => null,
+            'branch_id' => null,
+        ]);
+    }
+
+    public function forTenant(int $tenantId, ?int $branchId = null): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'tenant_id' => $tenantId,
+            'branch_id' => $branchId,
+        ]);
     }
 
     /**
@@ -38,8 +58,6 @@ class UserFactory extends Factory
      */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(fn (array $attributes) => []);
     }
 }
