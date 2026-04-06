@@ -1,0 +1,102 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Invoice\StoreInvoicePaymentRequest;
+use App\Http\Requests\Invoice\UpdateInvoiceRequest;
+use App\Http\Resources\InvoiceResource;
+use App\Http\Resources\PaymentResource;
+use App\Models\Invoice;
+use App\Services\InvoiceService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class InvoiceController extends Controller
+{
+    public function __construct(private readonly InvoiceService $invoiceService) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $invoices = Invoice::where('tenant_id', $user->tenant_id)
+            ->with(['customer', 'branch', 'order'])
+            ->when($request->status, fn($q) => $q->where('status', $request->status))
+            ->when($request->type, fn($q) => $q->where('type', $request->type))
+            ->when($request->customer_id, fn($q) => $q->where('customer_id', $request->customer_id))
+            ->when($request->branch_id, fn($q) => $q->where('branch_id', $request->branch_id))
+            ->latest()
+            ->paginate($request->per_page ?? 15);
+
+        return response()->json([
+            'data' => InvoiceResource::collection($invoices->items()),
+            'meta' => [
+                'total' => $invoices->total(),
+                'per_page' => $invoices->perPage(),
+                'current_page' => $invoices->currentPage(),
+                'last_page' => $invoices->lastPage(),
+            ],
+        ]);
+    }
+
+    public function show(Request $request, Invoice $invoice): JsonResponse
+    {
+        if ($invoice->tenant_id !== $request->user()->tenant_id) {
+            abort(403);
+        }
+
+        $invoice->load(['customer', 'branch', 'order.items.product', 'contract', 'items', 'payments']);
+
+        return response()->json(['data' => new InvoiceResource($invoice)]);
+    }
+
+    /**
+     * تسجيل دفعة وتحديث حالة الفاتورة (unpaid / partial / paid)
+     */
+    public function recordPayment(StoreInvoicePaymentRequest $request, Invoice $invoice): JsonResponse
+    {
+        if ($invoice->tenant_id !== $request->user()->tenant_id) {
+            abort(403);
+        }
+
+        try {
+            $payment = $this->invoiceService->recordPayment(
+                $invoice,
+                $request->validated(),
+                $request->user()->id
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $invoice->load(['customer', 'branch', 'order', 'items', 'payments']);
+
+        return response()->json([
+            'data' => new InvoiceResource($invoice),
+            'payment' => new PaymentResource($payment),
+        ], 201);
+    }
+
+    /**
+     * تغيير حالة الفاتورة إلى cancelled (لا يمكن إلغاء فاتورة مدفوعة بالكامل)
+     */
+    public function update(UpdateInvoiceRequest $request, Invoice $invoice): JsonResponse
+    {
+        if ($invoice->tenant_id !== $request->user()->tenant_id) {
+            abort(403);
+        }
+
+        if ($request->input('status') === 'cancelled') {
+            try {
+                $invoice = $this->invoiceService->cancel($invoice);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+        }
+
+        $invoice->load(['customer', 'branch', 'order', 'items', 'payments']);
+
+        return response()->json(['data' => new InvoiceResource($invoice)]);
+    }
+}
