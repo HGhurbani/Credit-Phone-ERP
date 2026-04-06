@@ -129,37 +129,99 @@ class ContractService
 
     public function recordPayment(InstallmentContract $contract, array $data, int $userId): array
     {
-        return DB::transaction(function () use ($contract, $data, $userId) {
-            $paymentService = app(PaymentService::class);
-            $payment = $paymentService->record($contract, $data, $userId);
+        $paymentService = app(PaymentService::class);
+        $payment = $paymentService->record($contract, $data, $userId);
 
-            return ['contract' => $contract->fresh(['schedules']), 'payment' => $payment];
-        });
+        return ['contract' => $contract->fresh(['schedules']), 'payment' => $payment];
     }
 
-    public function refreshStatus(InstallmentContract $contract): void
+    /**
+     * Recompute schedule row statuses from amounts + due dates (single source of truth).
+     */
+    public function recomputeAllScheduleStatuses(int $contractId): void
     {
-        InstallmentSchedule::where('contract_id', $contract->id)
-            ->whereIn('status', ['upcoming', 'due_today', 'partial'])
-            ->where('due_date', '<', today())
-            ->update(['status' => 'overdue']);
+        $schedules = InstallmentSchedule::where('contract_id', $contractId)
+            ->orderBy('due_date')
+            ->orderBy('installment_number')
+            ->get();
 
-        InstallmentSchedule::where('contract_id', $contract->id)
-            ->whereIn('status', ['upcoming'])
-            ->whereDate('due_date', today())
-            ->update(['status' => 'due_today']);
+        foreach ($schedules as $schedule) {
+            $this->recomputeSingleScheduleStatus($schedule);
+        }
+    }
 
+    private function recomputeSingleScheduleStatus(InstallmentSchedule $schedule): void
+    {
+        $remaining = round((float) $schedule->remaining_amount, 2);
+        $due = Carbon::parse($schedule->due_date)->startOfDay();
+        $today = today()->startOfDay();
+        $paidPortion = round((float) $schedule->paid_amount, 2);
+
+        if ($remaining <= 0.0001) {
+            $status = 'paid';
+        } elseif ($due->lt($today)) {
+            $status = 'overdue';
+        } elseif ($due->equalTo($today)) {
+            $status = 'due_today';
+        } elseif ($paidPortion > 0.0001) {
+            $status = 'partial';
+        } else {
+            $status = 'upcoming';
+        }
+
+        $schedule->update([
+            'status' => $status,
+            'paid_date' => $status === 'paid' ? ($schedule->paid_date ?? today()) : $schedule->paid_date,
+        ]);
+    }
+
+    /**
+     * Set contract paid_amount / remaining_amount from schedule aggregates (authoritative).
+     */
+    public function reconcileContractTotalsFromSchedules(InstallmentContract $contract): void
+    {
+        $schedules = InstallmentSchedule::where('contract_id', $contract->id)->get();
+
+        $sumPaid = round($schedules->sum(fn ($s) => (float) $s->paid_amount), 2);
+        $sumRemaining = round($schedules->sum(fn ($s) => (float) $s->remaining_amount), 2);
+
+        $contract->update([
+            'paid_amount' => $sumPaid,
+            'remaining_amount' => max(0, $sumRemaining),
+        ]);
+    }
+
+    /**
+     * Contract header: completed / overdue / active — after schedules + totals are current.
+     */
+    public function refreshContractHeaderStatus(InstallmentContract $contract): void
+    {
         $contract->refresh();
 
-        if ($contract->remaining_amount <= 0) {
+        if ((float) $contract->remaining_amount <= 0.0001) {
             $contract->update(['status' => 'completed']);
-        } elseif (
-            InstallmentSchedule::where('contract_id', $contract->id)
-                ->where('status', 'overdue')
-                ->exists()
-        ) {
-            $contract->update(['status' => 'overdue']);
+
+            return;
         }
+
+        if (InstallmentSchedule::where('contract_id', $contract->id)->where('status', 'overdue')->exists()) {
+            $contract->update(['status' => 'overdue']);
+
+            return;
+        }
+
+        $contract->update(['status' => 'active']);
+    }
+
+    /**
+     * Refresh schedules + contract totals + header (e.g. contract detail / schedules API).
+     */
+    public function refreshStatus(InstallmentContract $contract): void
+    {
+        $this->recomputeAllScheduleStatuses($contract->id);
+        $contract->refresh();
+        $this->reconcileContractTotalsFromSchedules($contract);
+        $this->refreshContractHeaderStatus($contract);
     }
 
     private function deductStock(Order $order, int $userId): void

@@ -12,7 +12,8 @@ class StorePaymentRequest extends FormRequest
     {
         return [
             'contract_id' => 'required|exists:installment_contracts,id',
-            'schedule_id' => 'nullable|exists:installment_schedules,id',
+            // Contract + tenant match enforced in PaymentService (avoid blind exists:* checks)
+            'schedule_id' => 'nullable|integer|min:1',
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'required|in:cash,bank_transfer,cheque,card,other',
             'payment_date' => 'required|date',

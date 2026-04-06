@@ -7,14 +7,73 @@ use App\Models\InstallmentContract;
 use App\Models\InstallmentSchedule;
 use App\Models\Payment;
 use App\Models\Receipt;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PaymentService
 {
+    private const MONEY_SCALE = 2;
+
     public function record(InstallmentContract $contract, array $data, int $userId): Payment
     {
         return DB::transaction(function () use ($contract, $data, $userId) {
-            $scheduleId = $data['schedule_id'] ?? null;
+            InstallmentContract::whereKey($contract->id)->lockForUpdate()->firstOrFail();
+
+            $amount = $this->money((float) $data['amount']);
+            if ($amount <= 0) {
+                throw ValidationException::withMessages(['amount' => ['Payment amount must be greater than zero.']]);
+            }
+
+            $scheduleId = array_key_exists('schedule_id', $data) && $data['schedule_id'] !== null && $data['schedule_id'] !== ''
+                ? (int) $data['schedule_id']
+                : null;
+
+            $schedules = InstallmentSchedule::where('contract_id', $contract->id)
+                ->orderBy('due_date')
+                ->orderBy('installment_number')
+                ->lockForUpdate()
+                ->get();
+
+            $this->assertScheduleContractIntegrity($contract, $schedules);
+
+            $maxPayable = $this->money($schedules->sum(fn ($s) => (float) $s->remaining_amount));
+            if ($amount > $maxPayable) {
+                throw ValidationException::withMessages([
+                    'amount' => [
+                        'Payment exceeds the remaining balance for this contract. Maximum payable: '.$this->formatMoney($maxPayable).'.',
+                    ],
+                ]);
+            }
+
+            if ($scheduleId !== null) {
+                $schedule = $schedules->firstWhere('id', $scheduleId);
+                if ($schedule === null) {
+                    throw ValidationException::withMessages([
+                        'schedule_id' => ['The selected installment does not belong to this contract.'],
+                    ]);
+                }
+                $this->assertScheduleMatchesContract($contract, $schedule);
+
+                $lineRemaining = $this->money((float) $schedule->remaining_amount);
+                if ($amount > $lineRemaining) {
+                    throw ValidationException::withMessages([
+                        'amount' => [
+                            'Payment exceeds the remaining amount for this installment. Maximum for this line: '.$this->formatMoney($lineRemaining).'.',
+                        ],
+                    ]);
+                }
+
+                $this->applyAmountToScheduleRow($schedule, $amount);
+            } else {
+                $this->applyAmountAcrossSchedules($schedules, $amount);
+            }
+
+            $contractService = app(ContractService::class);
+            $contractService->recomputeAllScheduleStatuses($contract->id);
+            $contract->refresh();
+            $contractService->reconcileContractTotalsFromSchedules($contract);
+            $contractService->refreshContractHeaderStatus($contract);
 
             $payment = Payment::create([
                 'tenant_id' => $contract->tenant_id,
@@ -24,33 +83,19 @@ class PaymentService
                 'schedule_id' => $scheduleId,
                 'collected_by' => $userId,
                 'receipt_number' => $this->generateReceiptNumber($contract->tenant_id),
-                'amount' => $data['amount'],
+                'amount' => $amount,
                 'payment_method' => $data['payment_method'] ?? 'cash',
                 'payment_date' => $data['payment_date'] ?? today(),
                 'reference_number' => $data['reference_number'] ?? null,
                 'collector_notes' => $data['collector_notes'] ?? null,
             ]);
 
-            // Update schedule line if specified
-            if ($scheduleId) {
-                $this->updateSchedule($scheduleId, $data['amount']);
-            } else {
-                // Apply to oldest unpaid schedule
-                $this->applyToSchedules($contract, $data['amount']);
-            }
-
-            // Update contract paid/remaining amounts
-            $contract->increment('paid_amount', $data['amount']);
-            $contract->decrement('remaining_amount', $data['amount']);
-
-            // Generate receipt record
             Receipt::create([
                 'payment_id' => $payment->id,
                 'tenant_id' => $contract->tenant_id,
                 'receipt_number' => $payment->receipt_number,
             ]);
 
-            // Log collection event
             CollectionLog::create([
                 'tenant_id' => $contract->tenant_id,
                 'contract_id' => $contract->id,
@@ -58,70 +103,106 @@ class PaymentService
                 'payment_id' => $payment->id,
                 'logged_by' => $userId,
                 'action' => 'payment_received',
-                'notes' => 'Payment of ' . $data['amount'] . ' recorded via ' . ($data['payment_method'] ?? 'cash'),
+                'notes' => 'Payment of '.$this->formatMoney($amount).' recorded via '.($data['payment_method'] ?? 'cash'),
             ]);
-
-            // Refresh contract status
-            app(ContractService::class)->refreshStatus($contract);
 
             return $payment->load(['contract', 'customer', 'collectedBy', 'receipt']);
         });
     }
 
-    private function updateSchedule(int $scheduleId, float $amount): void
+    /**
+     * Sanity check: schedule rows belong to contract tenant (detect drift / bad data).
+     */
+    private function assertScheduleContractIntegrity(InstallmentContract $contract, $schedules): void
     {
-        $schedule = InstallmentSchedule::find($scheduleId);
-        if (!$schedule) return;
+        foreach ($schedules as $s) {
+            if ((int) $s->contract_id !== (int) $contract->id) {
+                throw ValidationException::withMessages([
+                    'contract_id' => ['Contract schedules are inconsistent. Contact support.'],
+                ]);
+            }
+            if ((int) $s->tenant_id !== (int) $contract->tenant_id) {
+                throw ValidationException::withMessages([
+                    'contract_id' => ['Contract schedules are inconsistent. Contact support.'],
+                ]);
+            }
+        }
+    }
 
-        $newPaid = $schedule->paid_amount + $amount;
-        $newRemaining = max(0, $schedule->amount - $newPaid);
-        $status = $newRemaining <= 0 ? 'paid' : 'partial';
+    private function assertScheduleMatchesContract(InstallmentContract $contract, InstallmentSchedule $schedule): void
+    {
+        if ((int) $schedule->contract_id !== (int) $contract->id) {
+            throw ValidationException::withMessages([
+                'schedule_id' => ['The selected installment does not belong to this contract.'],
+            ]);
+        }
+        if ((int) $schedule->tenant_id !== (int) $contract->tenant_id) {
+            throw ValidationException::withMessages([
+                'schedule_id' => ['The selected installment is not valid for this contract.'],
+            ]);
+        }
+    }
+
+    private function applyAmountToScheduleRow(InstallmentSchedule $schedule, float $amount): void
+    {
+        $amount = $this->money($amount);
+        $lineAmount = $this->money((float) $schedule->amount);
+        $paid = $this->money((float) $schedule->paid_amount + $amount);
+        $remaining = $this->money(max(0, $lineAmount - $paid));
 
         $schedule->update([
-            'paid_amount' => $newPaid,
-            'remaining_amount' => $newRemaining,
-            'status' => $status,
-            'paid_date' => $status === 'paid' ? today() : $schedule->paid_date,
+            'paid_amount' => $paid,
+            'remaining_amount' => $remaining,
         ]);
     }
 
-    private function applyToSchedules(InstallmentContract $contract, float $amount): void
+    /**
+     * @param  \Illuminate\Support\Collection<int, InstallmentSchedule>  $schedules
+     */
+    private function applyAmountAcrossSchedules($schedules, float $totalAmount): void
     {
-        $remaining = $amount;
-
-        $schedules = InstallmentSchedule::where('contract_id', $contract->id)
-            ->whereIn('status', ['overdue', 'due_today', 'partial', 'upcoming'])
-            ->orderBy('due_date')
-            ->get();
+        $remaining = $this->money($totalAmount);
 
         foreach ($schedules as $schedule) {
-            if ($remaining <= 0) break;
+            if ($remaining <= 0) {
+                break;
+            }
+            $lineRem = $this->money((float) $schedule->remaining_amount);
+            if ($lineRem <= 0) {
+                continue;
+            }
+            $apply = $this->money(min($remaining, $lineRem));
+            $this->applyAmountToScheduleRow($schedule, $apply);
+            $remaining = $this->money($remaining - $apply);
+        }
 
-            $toApply = min($remaining, $schedule->remaining_amount);
-            $remaining -= $toApply;
-
-            $newPaid = $schedule->paid_amount + $toApply;
-            $newRemaining = max(0, $schedule->amount - $newPaid);
-            $status = $newRemaining <= 0 ? 'paid' : 'partial';
-
-            $schedule->update([
-                'paid_amount' => $newPaid,
-                'remaining_amount' => $newRemaining,
-                'status' => $status,
-                'paid_date' => $status === 'paid' ? today() : $schedule->paid_date,
+        if ($remaining > 0.0001) {
+            throw ValidationException::withMessages([
+                'amount' => ['Unable to allocate payment across installments. Please try again or contact support.'],
             ]);
         }
     }
 
     private function generateReceiptNumber(int $tenantId): string
     {
-        $prefix = 'REC-' . str_pad($tenantId, 3, '0', STR_PAD_LEFT) . '-';
+        $prefix = 'REC-'.str_pad((string) $tenantId, 3, '0', STR_PAD_LEFT).'-';
         $last = Payment::where('tenant_id', $tenantId)
-            ->where('receipt_number', 'like', $prefix . '%')
+            ->where('receipt_number', 'like', $prefix.'%')
             ->orderByDesc('id')
             ->value('receipt_number');
 
         $next = $last ? (int) substr($last, strlen($prefix)) + 1 : 1;
-        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+
+        return $prefix.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function money(float $value): float
+    {
+        return round($value, self::MONEY_SCALE);
+    }
+
+    private function formatMoney(float $value): string
+    {
+        return number_format($this->money($value), self::MONEY_SCALE, '.', '');
     }
 }
