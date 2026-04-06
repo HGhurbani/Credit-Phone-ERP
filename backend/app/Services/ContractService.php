@@ -7,70 +7,60 @@ use App\Models\InstallmentSchedule;
 use App\Models\Order;
 use App\Models\Inventory;
 use App\Models\StockMovement;
+use App\Models\User;
+use App\Support\TenantBranchScope;
 use App\Support\TenantSettings;
 use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ContractService
 {
-    public function createFromOrder(Order $order, array $data, int $userId): InstallmentContract
+    public function createFromOrder(Order $order, array $data, User $user): InstallmentContract
     {
-        return DB::transaction(function () use ($order, $data, $userId) {
-            $order->loadMissing('items.product');
+        return DB::transaction(function () use ($order, $data, $user) {
+            $userId = $user->id;
+
+            $order = Order::whereKey($order->id)
+                ->lockForUpdate()
+                ->with(['items.product', 'contract'])
+                ->firstOrFail();
+
+            $this->assertOrderEligibleForContract($order, $user);
+
+            if ($order->items->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['The order has no line items.'],
+                ]);
+            }
+
+            foreach ($order->items as $item) {
+                if (! $item->product) {
+                    throw ValidationException::withMessages([
+                        'order_id' => ['A line item references a product that no longer exists.'],
+                    ]);
+                }
+                if ((int) $item->product->tenant_id !== (int) $order->tenant_id) {
+                    throw ValidationException::withMessages([
+                        'order_id' => ['A product on this order does not belong to this tenant.'],
+                    ]);
+                }
+            }
 
             $startDate = Carbon::parse($data['start_date']);
             $firstDueDate = Carbon::parse($data['first_due_date']);
             $durationMonths = (int) $data['duration_months'];
             $downPayment = (float) $data['down_payment'];
 
-            $mode = TenantSettings::string($order->tenant_id, 'installment_pricing_mode', 'percentage');
+            $pricing = $this->computeInstallmentPricing($order, $durationMonths, $downPayment);
 
-            $cashTotal = (float) $order->items->sum(fn ($i) => (float) $i->product->cash_price * $i->quantity);
-
-            if ($mode === 'percentage') {
-                $defaultPercent = TenantSettings::float($order->tenant_id, 'installment_monthly_percent_of_cash', 5.0);
-                $weighted = 0.0;
-                foreach ($order->items as $item) {
-                    $lineCash = (float) $item->product->cash_price * $item->quantity;
-                    $p = $item->product->monthly_percent_of_cash !== null
-                        ? (float) $item->product->monthly_percent_of_cash
-                        : $defaultPercent;
-                    $weighted += $lineCash * $p;
-                }
-                $effectivePercent = $cashTotal > 0 ? $weighted / $cashTotal : $defaultPercent;
-                $monthlyAmount = round($cashTotal * ($effectivePercent / 100), 2);
-            } else {
-                $sum = 0.0;
-                foreach ($order->items as $item) {
-                    $fm = $item->product->fixed_monthly_amount;
-                    if ($fm === null) {
-                        throw new \InvalidArgumentException('Product "'.$item->product->name.'" is missing fixed monthly amount (fixed installment mode).');
-                    }
-                    $sum += (float) $fm * $item->quantity;
-                }
-                $monthlyAmount = round($sum, 2);
-            }
-
-            if ($monthlyAmount <= 0) {
-                throw new \InvalidArgumentException('Calculated monthly installment must be greater than zero.');
-            }
-
-            $financedAmount = round($monthlyAmount * $durationMonths, 2);
-            $orderTotal = (float) $order->total;
-
-            if ($orderTotal + 0.01 < $financedAmount) {
-                throw new \InvalidArgumentException('Order total is less than the financed amount for the selected duration.');
-            }
-
-            $expectedDown = round($orderTotal - $financedAmount, 2);
-            if (abs($expectedDown - $downPayment) > 0.05) {
-                throw new \InvalidArgumentException(
-                    'Down payment must be '.number_format($expectedDown, 2).' to match the order total and the installment schedule (financed: '.number_format($financedAmount, 2).'). You entered: '.number_format($downPayment, 2).'.'
-                );
-            }
-
+            $monthlyAmount = $pricing['monthly_amount'];
+            $financedAmount = $pricing['financed_amount'];
             $totalAmount = $financedAmount;
             $endDate = $firstDueDate->copy()->addMonths($durationMonths - 1);
+
+            $this->validateInventoryStockForOrder($order);
 
             $contract = InstallmentContract::create([
                 'tenant_id' => $order->tenant_id,
@@ -95,12 +85,183 @@ class ContractService
 
             $this->generateSchedule($contract);
 
-            $this->deductStock($order, $userId);
+            $this->deductStockForOrder($order, $userId);
 
             $order->update(['status' => 'converted_to_contract']);
 
             return $contract->load(['customer', 'order', 'schedules']);
         });
+    }
+
+    /**
+     * @throws AuthorizationException
+     * @throws ValidationException
+     */
+    private function assertOrderEligibleForContract(Order $order, User $user): void
+    {
+        if (! $user->isSuperAdmin() && (int) $order->tenant_id !== (int) $user->tenant_id) {
+            throw new AuthorizationException('Access denied.');
+        }
+
+        if (TenantBranchScope::isBranchScoped($user)
+            && (int) $order->branch_id !== (int) $user->branch_id) {
+            abort(403, 'Access denied.');
+        }
+
+        if (! $order->canBeConverted()) {
+            throw ValidationException::withMessages([
+                'order_id' => ['This order cannot be converted to a contract (must be approved and installment).'],
+            ]);
+        }
+
+        if ($order->contract()->exists()) {
+            throw ValidationException::withMessages([
+                'order_id' => ['This order already has a contract.'],
+            ]);
+        }
+    }
+
+    /**
+     * @return array{monthly_amount: float, financed_amount: float}
+     */
+    private function computeInstallmentPricing(Order $order, int $durationMonths, float $downPayment): array
+    {
+        $mode = TenantSettings::string($order->tenant_id, 'installment_pricing_mode', 'percentage');
+
+        $cashTotal = (float) $order->items->sum(fn ($i) => (float) $i->product->cash_price * $i->quantity);
+
+        if ($mode === 'percentage') {
+            $defaultPercent = TenantSettings::float($order->tenant_id, 'installment_monthly_percent_of_cash', 5.0);
+            $weighted = 0.0;
+            foreach ($order->items as $item) {
+                $lineCash = (float) $item->product->cash_price * $item->quantity;
+                $p = $item->product->monthly_percent_of_cash !== null
+                    ? (float) $item->product->monthly_percent_of_cash
+                    : $defaultPercent;
+                $weighted += $lineCash * $p;
+            }
+            $effectivePercent = $cashTotal > 0 ? $weighted / $cashTotal : $defaultPercent;
+            $monthlyAmount = round($cashTotal * ($effectivePercent / 100), 2);
+        } else {
+            $sum = 0.0;
+            foreach ($order->items as $item) {
+                $fm = $item->product->fixed_monthly_amount;
+                if ($fm === null) {
+                    throw ValidationException::withMessages([
+                        'order_id' => ['Product "'.$item->product->name.'" is missing fixed monthly amount (fixed installment mode).'],
+                    ]);
+                }
+                $sum += (float) $fm * $item->quantity;
+            }
+            $monthlyAmount = round($sum, 2);
+        }
+
+        if ($monthlyAmount <= 0) {
+            throw ValidationException::withMessages([
+                'order_id' => ['Calculated monthly installment must be greater than zero.'],
+            ]);
+        }
+
+        $financedAmount = round($monthlyAmount * $durationMonths, 2);
+        $orderTotal = (float) $order->total;
+
+        if ($orderTotal + 0.01 < $financedAmount) {
+            throw ValidationException::withMessages([
+                'duration_months' => ['Order total is less than the financed amount for the selected duration.'],
+            ]);
+        }
+
+        $expectedDown = round($orderTotal - $financedAmount, 2);
+        if (abs($expectedDown - $downPayment) > 0.05) {
+            throw ValidationException::withMessages([
+                'down_payment' => [
+                    'Down payment must be '.number_format($expectedDown, 2).' to match the order total and the installment schedule (financed: '.number_format($financedAmount, 2).'). You entered: '.number_format($downPayment, 2).'.',
+                ],
+            ]);
+        }
+
+        return [
+            'monthly_amount' => $monthlyAmount,
+            'financed_amount' => $financedAmount,
+        ];
+    }
+
+    /**
+     * Lock inventory per product (sorted product id) and ensure total quantity across all lines is covered.
+     */
+    private function validateInventoryStockForOrder(Order $order): void
+    {
+        $grouped = $order->items->groupBy('product_id');
+
+        foreach ($grouped->sortKeys() as $productId => $items) {
+            $qtyNeeded = (int) $items->sum('quantity');
+
+            $inventory = Inventory::where('product_id', $productId)
+                ->where('branch_id', $order->branch_id)
+                ->lockForUpdate()
+                ->first();
+
+            $first = $items->first();
+            $label = $first->product_name ?: ($first->product->name ?? 'Product #'.$productId);
+
+            if ($inventory === null) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['No inventory record for "'.$label.'" at this branch. Initialize stock before converting this order.'],
+                ]);
+            }
+
+            $available = (int) $inventory->quantity;
+
+            if ($available < $qtyNeeded) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['Insufficient stock for "'.$label.'". Required: '.$qtyNeeded.', available: '.$available.'.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * One movement per order line; same product on multiple lines uses sequential decrements on the same inventory row.
+     */
+    private function deductStockForOrder(Order $order, int $userId): void
+    {
+        foreach ($order->items->sortBy('id') as $item) {
+            $inventory = Inventory::where('product_id', $item->product_id)
+                ->where('branch_id', $order->branch_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($inventory === null) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['Inventory row missing during stock deduction. The operation was rolled back.'],
+                ]);
+            }
+
+            $before = (int) $inventory->quantity;
+            $qty = (int) $item->quantity;
+
+            if ($before < $qty) {
+                throw ValidationException::withMessages([
+                    'order_id' => ['Insufficient stock at deduction time for "'.$item->product_name.'". The operation was rolled back.'],
+                ]);
+            }
+
+            $inventory->decrement('quantity', $qty);
+            $after = $before - $qty;
+
+            StockMovement::create([
+                'product_id' => $item->product_id,
+                'branch_id' => $order->branch_id,
+                'created_by' => $userId,
+                'type' => 'out',
+                'quantity' => $qty,
+                'quantity_before' => $before,
+                'quantity_after' => $after,
+                'reference_type' => Order::class,
+                'reference_id' => $order->id,
+                'serial_number' => $item->serial_number,
+            ]);
+        }
     }
 
     public function generateSchedule(InstallmentContract $contract): void
@@ -222,33 +383,6 @@ class ContractService
         $contract->refresh();
         $this->reconcileContractTotalsFromSchedules($contract);
         $this->refreshContractHeaderStatus($contract);
-    }
-
-    private function deductStock(Order $order, int $userId): void
-    {
-        foreach ($order->items as $item) {
-            $inventory = Inventory::where('product_id', $item->product_id)
-                ->where('branch_id', $order->branch_id)
-                ->first();
-
-            if ($inventory) {
-                $before = $inventory->quantity;
-                $inventory->decrement('quantity', $item->quantity);
-
-                StockMovement::create([
-                    'product_id' => $item->product_id,
-                    'branch_id' => $order->branch_id,
-                    'created_by' => $userId,
-                    'type' => 'out',
-                    'quantity' => $item->quantity,
-                    'quantity_before' => $before,
-                    'quantity_after' => $before - $item->quantity,
-                    'reference_type' => Order::class,
-                    'reference_id' => $order->id,
-                    'serial_number' => $item->serial_number,
-                ]);
-            }
-        }
     }
 
     private function generateContractNumber(int $tenantId): string

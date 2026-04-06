@@ -58,19 +58,11 @@ class ContractController extends Controller
             abort(403, 'Access denied.');
         }
 
-        if (!$order->canBeConverted()) {
-            return response()->json(['message' => 'Order is not eligible for contract creation.'], 422);
-        }
-
-        try {
-            $contract = $this->contractService->createFromOrder(
-                $order,
-                $request->validated(),
-                $request->user()->id
-            );
-        } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        $contract = $this->contractService->createFromOrder(
+            $order,
+            $request->validated(),
+            $request->user()
+        );
 
         return response()->json(['data' => new ContractResource($contract)], 201);
     }
