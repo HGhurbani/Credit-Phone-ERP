@@ -1,6 +1,9 @@
 /** كود ISO للعملة الافتراضية: ريال قطري */
 export const DEFAULT_CURRENCY_CODE = 'QAR';
 
+/** أرقام لاتينية (0–9) حتى مع واجهة عربية — لا تستخدم الأرقام العربية الهندية */
+const LATN = { numberingSystem: 'latn' };
+
 /** لاحقة العرض للعربية (رموز شائعة) */
 const CURRENCY_DISPLAY_AR = {
   QAR: 'ر.ق',
@@ -16,6 +19,7 @@ export function formatCurrency(amount, currencyCode = DEFAULT_CURRENCY_CODE) {
     style: 'decimal',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
+    ...LATN,
   }).format(amount);
   const suffix = CURRENCY_DISPLAY_AR[currencyCode] ?? currencyCode;
   return `${formatted} ${suffix}`;
@@ -29,6 +33,7 @@ export function formatDate(date, locale = 'ar-QA') {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    ...LATN,
   }).format(d);
 }
 
@@ -42,10 +47,11 @@ export function formatDateTime(date, locale = 'ar-QA') {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    ...LATN,
   }).format(d);
 }
 
 export function formatNumber(n) {
   if (n === null || n === undefined) return '—';
-  return new Intl.NumberFormat('ar-QA').format(n);
+  return new Intl.NumberFormat('ar-QA', { ...LATN }).format(n);
 }
