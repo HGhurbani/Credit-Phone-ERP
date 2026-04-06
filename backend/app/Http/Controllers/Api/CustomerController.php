@@ -8,6 +8,7 @@ use App\Http\Requests\Customer\UpdateCustomerRequest;
 use App\Http\Resources\CustomerResource;
 use App\Models\Customer;
 use App\Models\CustomerNote;
+use App\Support\TenantBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,14 +16,21 @@ class CustomerController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+
+        $effectiveBranch = TenantBranchScope::resolveListBranchId(
+            $user,
+            TenantBranchScope::requestBranchId($request),
+            $tenantId
+        );
 
         $query = Customer::forTenant($tenantId)
             ->with(['branch', 'createdBy'])
-            ->when($request->search, fn($q) => $q->search($request->search))
-            ->when($request->branch_id, fn($q) => $q->where('branch_id', $request->branch_id))
-            ->when($request->credit_score, fn($q) => $q->where('credit_score', $request->credit_score))
-            ->when($request->boolean('active_only'), fn($q) => $q->active())
+            ->when($request->search, fn ($q) => $q->search($request->search))
+            ->when($effectiveBranch !== null, fn ($q) => $q->where('branch_id', $effectiveBranch))
+            ->when($request->credit_score, fn ($q) => $q->where('credit_score', $request->credit_score))
+            ->when($request->boolean('active_only'), fn ($q) => $q->active())
             ->latest();
 
         $customers = $query->paginate($request->per_page ?? 15);
@@ -97,7 +105,12 @@ class CustomerController extends Controller
 
     private function authorizeTenant(Request $request, Customer $customer): void
     {
-        if (!$request->user()->isSuperAdmin() && $customer->tenant_id !== $request->user()->tenant_id) {
+        if (! $request->user()->isSuperAdmin() && $customer->tenant_id !== $request->user()->tenant_id) {
+            abort(403, 'Access denied.');
+        }
+
+        if (TenantBranchScope::isBranchScoped($request->user())
+            && (int) $customer->branch_id !== (int) $request->user()->branch_id) {
             abort(403, 'Access denied.');
         }
     }

@@ -9,6 +9,7 @@ use App\Http\Resources\ProductResource;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Support\TenantBranchScope;
 use App\Support\TenantSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -119,6 +120,12 @@ class ProductController extends Controller
             'type' => 'required|in:in,out,adjustment',
             'notes' => 'nullable|string',
         ]);
+
+        TenantBranchScope::assertBranchAccessibleForStock(
+            $request->user(),
+            (int) $request->branch_id,
+            (int) $product->tenant_id
+        );
 
         $inventory = Inventory::firstOrCreate(
             ['product_id' => $product->id, 'branch_id' => $request->branch_id],

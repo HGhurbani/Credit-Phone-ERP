@@ -8,6 +8,7 @@ use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Services\InvoiceService;
 use App\Services\OrderService;
+use App\Support\TenantBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,13 +24,18 @@ class OrderController extends Controller
         $user = $request->user();
         $tenantId = $user->tenant_id;
 
+        $effectiveBranch = TenantBranchScope::resolveListBranchId(
+            $user,
+            TenantBranchScope::requestBranchId($request),
+            $tenantId
+        );
+
         $query = Order::forTenant($tenantId)
             ->with(['customer', 'branch', 'salesAgent'])
-            ->when($request->search, fn($q) => $q->whereHas('customer', fn($cq) => $cq->search($request->search)))
-            ->when($request->status, fn($q) => $q->where('status', $request->status))
-            ->when($request->type, fn($q) => $q->where('type', $request->type))
-            ->when($request->branch_id, fn($q) => $q->where('branch_id', $request->branch_id))
-            ->when($user->branch_id && !$user->isSuperAdmin() && !$user->isCompanyAdmin(), fn($q) => $q->forBranch($user->branch_id))
+            ->when($request->search, fn ($q) => $q->whereHas('customer', fn ($cq) => $cq->search($request->search)))
+            ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($request->type, fn ($q) => $q->where('type', $request->type))
+            ->when($effectiveBranch !== null, fn ($q) => $q->where('branch_id', $effectiveBranch))
             ->latest();
 
         $orders = $query->paginate($request->per_page ?? 15);
@@ -116,7 +122,12 @@ class OrderController extends Controller
 
     private function authorizeTenant(Request $request, Order $order): void
     {
-        if (!$request->user()->isSuperAdmin() && $order->tenant_id !== $request->user()->tenant_id) {
+        if (! $request->user()->isSuperAdmin() && $order->tenant_id !== $request->user()->tenant_id) {
+            abort(403, 'Access denied.');
+        }
+
+        if (TenantBranchScope::isBranchScoped($request->user())
+            && (int) $order->branch_id !== (int) $request->user()->branch_id) {
             abort(403, 'Access denied.');
         }
     }

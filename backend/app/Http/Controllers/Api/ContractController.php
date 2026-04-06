@@ -8,6 +8,7 @@ use App\Http\Resources\ContractResource;
 use App\Models\InstallmentContract;
 use App\Models\Order;
 use App\Services\ContractService;
+use App\Support\TenantBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,13 +19,19 @@ class ContractController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $tenantId = $user->tenant_id;
 
-        $query = InstallmentContract::forTenant($user->tenant_id)
+        $effectiveBranch = TenantBranchScope::resolveListBranchId(
+            $user,
+            TenantBranchScope::requestBranchId($request),
+            $tenantId
+        );
+
+        $query = InstallmentContract::forTenant($tenantId)
             ->with(['customer', 'branch', 'order'])
-            ->when($request->search, fn($q) => $q->whereHas('customer', fn($cq) => $cq->search($request->search)))
-            ->when($request->status, fn($q) => $q->where('status', $request->status))
-            ->when($request->branch_id, fn($q) => $q->where('branch_id', $request->branch_id))
-            ->when($user->branch_id && !$user->isSuperAdmin() && !$user->isCompanyAdmin(), fn($q) => $q->forBranch($user->branch_id))
+            ->when($request->search, fn ($q) => $q->whereHas('customer', fn ($cq) => $cq->search($request->search)))
+            ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($effectiveBranch !== null, fn ($q) => $q->where('branch_id', $effectiveBranch))
             ->latest();
 
         $contracts = $query->paginate($request->per_page ?? 15);
@@ -46,6 +53,11 @@ class ContractController extends Controller
 
         $this->authorizeTenant($request, $order->tenant_id);
 
+        if (TenantBranchScope::isBranchScoped($request->user())
+            && (int) $order->branch_id !== (int) $request->user()->branch_id) {
+            abort(403, 'Access denied.');
+        }
+
         if (!$order->canBeConverted()) {
             return response()->json(['message' => 'Order is not eligible for contract creation.'], 422);
         }
@@ -66,6 +78,7 @@ class ContractController extends Controller
     public function show(Request $request, InstallmentContract $contract): JsonResponse
     {
         $this->authorizeTenant($request, $contract->tenant_id);
+        $this->authorizeBranchContract($request, $contract);
 
         $contract->load(['customer', 'order.items.product', 'branch', 'schedules', 'payments.collectedBy', 'createdBy']);
 
@@ -75,6 +88,7 @@ class ContractController extends Controller
     public function schedules(Request $request, InstallmentContract $contract): JsonResponse
     {
         $this->authorizeTenant($request, $contract->tenant_id);
+        $this->authorizeBranchContract($request, $contract);
 
         $this->contractService->refreshStatus($contract);
 
@@ -83,7 +97,18 @@ class ContractController extends Controller
 
     private function authorizeTenant(Request $request, int $tenantId): void
     {
-        if (!$request->user()->isSuperAdmin() && $tenantId !== $request->user()->tenant_id) {
+        if (! $request->user()->isSuperAdmin() && $tenantId !== $request->user()->tenant_id) {
+            abort(403, 'Access denied.');
+        }
+    }
+
+    private function authorizeBranchContract(Request $request, InstallmentContract $contract): void
+    {
+        if (! TenantBranchScope::isBranchScoped($request->user())) {
+            return;
+        }
+
+        if ((int) $contract->branch_id !== (int) $request->user()->branch_id) {
             abort(403, 'Access denied.');
         }
     }

@@ -9,6 +9,7 @@ use App\Models\InstallmentContract;
 use App\Models\InstallmentSchedule;
 use App\Models\Payment;
 use App\Services\PaymentService;
+use App\Support\TenantBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,14 +20,21 @@ class PaymentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $tenantId = $user->tenant_id;
 
-        $query = Payment::forTenant($user->tenant_id)
+        $effectiveBranch = TenantBranchScope::resolveListBranchId(
+            $user,
+            TenantBranchScope::requestBranchId($request),
+            $tenantId
+        );
+
+        $query = Payment::forTenant($tenantId)
             ->with(['customer', 'contract', 'collectedBy', 'branch'])
-            ->when($request->customer_id, fn($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->contract_id, fn($q) => $q->where('contract_id', $request->contract_id))
-            ->when($request->branch_id, fn($q) => $q->where('branch_id', $request->branch_id))
-            ->when($request->date_from, fn($q) => $q->whereDate('payment_date', '>=', $request->date_from))
-            ->when($request->date_to, fn($q) => $q->whereDate('payment_date', '<=', $request->date_to))
+            ->when($effectiveBranch !== null, fn ($q) => $q->where('branch_id', $effectiveBranch))
+            ->when($request->customer_id, fn ($q) => $q->where('customer_id', $request->customer_id))
+            ->when($request->contract_id, fn ($q) => $q->where('contract_id', $request->contract_id))
+            ->when($request->date_from, fn ($q) => $q->whereDate('payment_date', '>=', $request->date_from))
+            ->when($request->date_to, fn ($q) => $q->whereDate('payment_date', '<=', $request->date_to))
             ->latest();
 
         $payments = $query->paginate($request->per_page ?? 15);
@@ -50,6 +58,11 @@ class PaymentController extends Controller
             abort(403);
         }
 
+        if (TenantBranchScope::isBranchScoped($request->user())
+            && (int) $contract->branch_id !== (int) $request->user()->branch_id) {
+            abort(403, 'Access denied.');
+        }
+
         $payment = $this->paymentService->record($contract, $request->validated(), $request->user()->id);
 
         return response()->json(['data' => new PaymentResource($payment)], 201);
@@ -59,6 +72,11 @@ class PaymentController extends Controller
     {
         if ($payment->tenant_id !== $request->user()->tenant_id) {
             abort(403);
+        }
+
+        if (TenantBranchScope::isBranchScoped($request->user())
+            && (int) $payment->branch_id !== (int) $request->user()->branch_id) {
+            abort(403, 'Access denied.');
         }
 
         $payment->load(['customer', 'contract', 'schedule', 'collectedBy', 'receipt']);
@@ -74,7 +92,7 @@ class PaymentController extends Controller
             ->whereDate('due_date', today())
             ->whereIn('status', ['upcoming', 'due_today', 'partial'])
             ->with(['contract.customer', 'contract.branch'])
-            ->when($user->branch_id && !$user->isSuperAdmin() && !$user->isCompanyAdmin(), fn($q) => $q->whereHas('contract', fn($cq) => $cq->where('branch_id', $user->branch_id)))
+            ->when(TenantBranchScope::isBranchScoped($user), fn ($q) => $q->whereHas('contract', fn ($cq) => $cq->where('branch_id', $user->branch_id)))
             ->paginate($request->per_page ?? 20);
 
         return response()->json([
@@ -94,7 +112,7 @@ class PaymentController extends Controller
         $schedules = InstallmentSchedule::where('tenant_id', $user->tenant_id)
             ->where('status', 'overdue')
             ->with(['contract.customer', 'contract.branch'])
-            ->when($user->branch_id && !$user->isSuperAdmin() && !$user->isCompanyAdmin(), fn($q) => $q->whereHas('contract', fn($cq) => $cq->where('branch_id', $user->branch_id)))
+            ->when(TenantBranchScope::isBranchScoped($user), fn ($q) => $q->whereHas('contract', fn ($cq) => $cq->where('branch_id', $user->branch_id)))
             ->orderBy('due_date')
             ->paginate($request->per_page ?? 20);
 
