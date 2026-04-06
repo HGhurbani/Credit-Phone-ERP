@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ContractController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
@@ -10,6 +12,8 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -58,22 +62,17 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
     Route::middleware('permission:products.delete')->delete('/products/{product}', [ProductController::class, 'destroy']);
     Route::middleware('permission:products.stock.adjust')->post('/products/{product}/stock', [ProductController::class, 'adjustStock']);
 
-    // Categories & Brands (inline handlers — Phase E will move to controllers)
-    Route::middleware('permission:categories.view')->get('/categories', fn () => response()->json(['data' => \App\Models\Category::forTenant(request()->user()->tenant_id)->get()]));
-    Route::middleware('permission:categories.create')->post('/categories', function (\Illuminate\Http\Request $request) {
-        $request->validate(['name' => 'required|string|max:255', 'name_ar' => 'nullable|string']);
-        $cat = \App\Models\Category::create(['tenant_id' => $request->user()->tenant_id, ...$request->only('name', 'name_ar', 'description')]);
+    // Categories
+    Route::middleware('permission:categories.view')->get('/categories', [CategoryController::class, 'index']);
+    Route::middleware('permission:categories.create')->post('/categories', [CategoryController::class, 'store']);
+    Route::middleware('permission:categories.update')->match(['put', 'patch'], '/categories/{category}', [CategoryController::class, 'update']);
+    Route::middleware('permission:categories.delete')->delete('/categories/{category}', [CategoryController::class, 'destroy']);
 
-        return response()->json(['data' => $cat], 201);
-    });
-
-    Route::middleware('permission:brands.view')->get('/brands', fn () => response()->json(['data' => \App\Models\Brand::forTenant(request()->user()->tenant_id)->get()]));
-    Route::middleware('permission:brands.create')->post('/brands', function (\Illuminate\Http\Request $request) {
-        $request->validate(['name' => 'required|string|max:255']);
-        $brand = \App\Models\Brand::create(['tenant_id' => $request->user()->tenant_id, ...$request->only('name')]);
-
-        return response()->json(['data' => $brand], 201);
-    });
+    // Brands
+    Route::middleware('permission:brands.view')->get('/brands', [BrandController::class, 'index']);
+    Route::middleware('permission:brands.create')->post('/brands', [BrandController::class, 'store']);
+    Route::middleware('permission:brands.update')->match(['put', 'patch'], '/brands/{brand}', [BrandController::class, 'update']);
+    Route::middleware('permission:brands.delete')->delete('/brands/{brand}', [BrandController::class, 'destroy']);
 
     // Orders
     Route::middleware('permission:orders.view')->group(function () {
@@ -141,22 +140,9 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
     });
 
     // Settings
-    Route::middleware('permission:settings.view')->get('/settings', function (\Illuminate\Http\Request $request) {
-        $settings = \App\Models\Setting::where('tenant_id', $request->user()->tenant_id)->get()
-            ->pluck('value', 'key');
+    Route::middleware('permission:settings.view')->get('/settings', [SettingController::class, 'index']);
+    Route::middleware('permission:settings.update')->put('/settings', [SettingController::class, 'update']);
 
-        return response()->json(['data' => $settings]);
-    });
-    Route::middleware('permission:settings.update')->put('/settings', function (\Illuminate\Http\Request $request) {
-        foreach ($request->settings as $key => $value) {
-            \App\Models\Setting::updateOrCreate(
-                ['tenant_id' => $request->user()->tenant_id, 'key' => $key],
-                ['value' => $value, 'group' => 'general']
-            );
-        }
-
-        return response()->json(['message' => 'Settings updated.']);
-    });
-
-    Route::middleware('permission:roles.view')->get('/roles', fn () => response()->json(['data' => \Spatie\Permission\Models\Role::all(['id', 'name'])]));
+    // Roles (assignable list for user forms)
+    Route::middleware('permission:roles.view')->get('/roles', [RoleController::class, 'index']);
 });
