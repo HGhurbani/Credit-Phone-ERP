@@ -106,7 +106,17 @@ class PaymentService
                 'notes' => 'Payment of '.$this->formatMoney($amount).' recorded via '.($data['payment_method'] ?? 'cash'),
             ]);
 
-            return $payment->load(['contract', 'customer', 'collectedBy', 'receipt']);
+            $payment = $payment->fresh(['contract', 'customer', 'collectedBy', 'receipt']);
+
+            if (! empty($data['cashbox_id'])) {
+                app(CashboxService::class)->tryRecordCashInForPayment(
+                    (int) $data['cashbox_id'],
+                    $payment,
+                    $userId
+                );
+            }
+
+            return $payment;
         });
     }
 

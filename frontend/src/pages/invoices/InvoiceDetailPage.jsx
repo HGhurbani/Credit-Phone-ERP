@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Receipt } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Receipt, Printer } from 'lucide-react';
 import Badge, { invoiceStatusBadge } from '../../components/ui/Badge';
 import { ConfirmModal } from '../../components/ui/Modal';
 import { invoicesApi } from '../../api/client';
@@ -103,7 +103,7 @@ export default function InvoiceDetailPage() {
   const canCancel = canRecordPayment && ['unpaid', 'partial'].includes(invoice.status);
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="page-header">
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate('/invoices')} className="btn-ghost btn btn-sm"><BackIcon size={16} /></button>
@@ -112,7 +112,16 @@ export default function InvoiceDetailPage() {
             <p className="page-subtitle">{invoice.customer?.name} · {formatDate(invoice.issue_date)}</p>
           </div>
         </div>
-        <Badge label={t(statusMeta.labelKey)} variant={statusMeta.variant} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(`/print/invoice/${id}`)}
+            className="btn-secondary btn btn-sm"
+          >
+            <Printer size={14} /> {t('invoices.printInvoice')}
+          </button>
+          <Badge label={t(statusMeta.labelKey)} variant={statusMeta.variant} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

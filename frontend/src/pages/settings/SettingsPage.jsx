@@ -68,7 +68,7 @@ export default function SettingsPage() {
   if (loading) return <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="page-header">
         <h1 className="page-title">{t('settings.title')}</h1>
       </div>

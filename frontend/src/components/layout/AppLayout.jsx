@@ -15,7 +15,7 @@ export default function AppLayout() {
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
       <Topbar sidebarCollapsed={collapsed} />
       <main
-        className="pt-16 min-h-screen transition-all duration-300"
+        className="layout-main pt-16 min-h-screen transition-all duration-300 print:!m-0 print:!p-4 print:min-h-0"
         style={{ [isRTL ? 'marginRight' : 'marginLeft']: sidebarWidth }}
       >
         <div className="p-6">

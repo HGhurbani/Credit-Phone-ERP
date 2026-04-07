@@ -71,7 +71,20 @@ export default function CollectionsPage() {
         </button>
       ),
     },
-    { key: 'customer', title: t('customers.name'), render: r => r.contract?.customer?.name || '—' },
+    {
+      key: 'customer',
+      title: t('customers.name'),
+      render: r => {
+        const cid = r.contract?.customer?.id;
+        const name = r.contract?.customer?.name;
+        if (!cid || !name) return '—';
+        return (
+          <button type="button" onClick={() => navigate(`/customers/${cid}`)} className="text-primary-600 hover:underline text-left">
+            {name}
+          </button>
+        );
+      },
+    },
     { key: 'installment_number', title: t('collections.installmentNumber'), render: r => `#${r.installment_number}` },
     { key: 'due_date', title: t('collections.dueDate'), render: r => formatDate(r.due_date) },
     { key: 'amount', title: t('common.amount'), render: r => formatCurrency(r.amount) },

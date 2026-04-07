@@ -296,11 +296,33 @@
 }
 
 /* Print styles */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
 @media print {
   .no-print {
     display: none !important;
   }
   body {
     background: white;
+  }
+  .layout-main {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .print-doc-outer {
+    background: white !important;
+  }
+  .print-doc {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .print-body table {
+    break-inside: avoid;
   }
 }

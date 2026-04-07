@@ -2,18 +2,24 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\CashboxController;
+use App\Http\Controllers\Api\CashTransactionController;
+use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ContractController;
+use App\Http\Controllers\Api\CustomerCollectionController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +58,18 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
     });
     Route::middleware('permission:customers.delete')->delete('/customers/{customer}', [CustomerController::class, 'destroy']);
 
+    Route::middleware('permission:customer_statement.view')->get('/customers/{customer}/statement', [CustomerCollectionController::class, 'statement']);
+    Route::middleware('permission:collections.followup.view')->group(function () {
+        Route::get('/customers/{customer}/follow-ups', [CustomerCollectionController::class, 'followUpsIndex']);
+        Route::get('/customers/{customer}/promises-to-pay', [CustomerCollectionController::class, 'promisesIndex']);
+        Route::get('/customers/{customer}/reschedule-requests', [CustomerCollectionController::class, 'rescheduleIndex']);
+    });
+    Route::middleware('permission:collections.followup.create')->group(function () {
+        Route::post('/customers/{customer}/follow-ups', [CustomerCollectionController::class, 'storeFollowUp']);
+        Route::post('/customers/{customer}/promises-to-pay', [CustomerCollectionController::class, 'storePromiseToPay']);
+        Route::post('/customers/{customer}/reschedule-requests', [CustomerCollectionController::class, 'storeRescheduleRequest']);
+    });
+
     // Products
     Route::middleware('permission:products.view')->group(function () {
         Route::get('/products', [ProductController::class, 'index']);
@@ -67,6 +85,26 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
     Route::middleware('permission:categories.create')->post('/categories', [CategoryController::class, 'store']);
     Route::middleware('permission:categories.update')->match(['put', 'patch'], '/categories/{category}', [CategoryController::class, 'update']);
     Route::middleware('permission:categories.delete')->delete('/categories/{category}', [CategoryController::class, 'destroy']);
+
+    // Suppliers
+    Route::middleware('permission:suppliers.view')->group(function () {
+        Route::get('/suppliers', [SupplierController::class, 'index']);
+        Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
+    });
+    Route::middleware('permission:suppliers.create')->post('/suppliers', [SupplierController::class, 'store']);
+    Route::middleware('permission:suppliers.update')->match(['put', 'patch'], '/suppliers/{supplier}', [SupplierController::class, 'update']);
+    Route::middleware('permission:suppliers.delete')->delete('/suppliers/{supplier}', [SupplierController::class, 'destroy']);
+
+    // Purchase orders
+    Route::middleware('permission:purchases.view')->group(function () {
+        Route::get('/purchase-orders', [PurchaseOrderController::class, 'index']);
+        Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show']);
+    });
+    Route::middleware('permission:purchases.create')->post('/purchase-orders', [PurchaseOrderController::class, 'store']);
+    Route::middleware('permission:purchases.update')->match(['put', 'patch'], '/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update']);
+    Route::middleware('permission:purchases.delete')->delete('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'destroy']);
+    Route::middleware('permission:purchases.update_status')->patch('/purchase-orders/{purchaseOrder}/status', [PurchaseOrderController::class, 'updateStatus']);
+    Route::middleware('permission:purchases.receive')->post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive']);
 
     // Brands
     Route::middleware('permission:brands.view')->get('/brands', [BrandController::class, 'index']);
@@ -145,4 +183,34 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
 
     // Roles (assignable list for user forms)
     Route::middleware('permission:roles.view')->get('/roles', [RoleController::class, 'index']);
+
+    // Cashboxes & cash movements
+    Route::middleware('permission:cashboxes.view')->group(function () {
+        Route::get('/cashboxes', [CashboxController::class, 'index']);
+        Route::get('/cashboxes/{cashbox}', [CashboxController::class, 'show']);
+    });
+    Route::middleware('permission:cashboxes.manage')->group(function () {
+        Route::post('/cashboxes', [CashboxController::class, 'store']);
+        Route::match(['put', 'patch'], '/cashboxes/{cashbox}', [CashboxController::class, 'update']);
+        Route::delete('/cashboxes/{cashbox}', [CashboxController::class, 'destroy']);
+        Route::post('/cashboxes/{cashbox}/transactions', [CashboxController::class, 'storeTransaction']);
+        Route::post('/cashboxes/{cashbox}/adjustment', [CashboxController::class, 'storeAdjustment']);
+    });
+
+    Route::middleware('permission:cash_transactions.view')->group(function () {
+        Route::get('/cash-transactions', [CashTransactionController::class, 'index']);
+        Route::get('/cash-transactions/{cashTransaction}', [CashTransactionController::class, 'show']);
+    });
+
+    // Expenses
+    Route::middleware('permission:expenses.view')->group(function () {
+        Route::get('/expenses', [ExpenseController::class, 'index']);
+        Route::get('/expenses/{expense}', [ExpenseController::class, 'show']);
+    });
+    Route::middleware('permission:expenses.create')->post('/expenses', [ExpenseController::class, 'store']);
+    Route::middleware('permission:expenses.update')->group(function () {
+        Route::match(['put', 'patch'], '/expenses/{expense}', [ExpenseController::class, 'update']);
+        Route::post('/expenses/{expense}/cancel', [ExpenseController::class, 'cancel']);
+    });
+    Route::middleware('permission:expenses.delete')->delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
 });

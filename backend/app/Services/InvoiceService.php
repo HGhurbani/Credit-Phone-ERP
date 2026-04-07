@@ -100,6 +100,16 @@ class InvoiceService
                 'receipt_number' => $payment->receipt_number,
             ]);
 
+            $payment = $payment->fresh();
+
+            if (! empty($data['cashbox_id'])) {
+                app(CashboxService::class)->tryRecordCashInForPayment(
+                    (int) $data['cashbox_id'],
+                    $payment,
+                    $userId
+                );
+            }
+
             return $payment->load(['customer', 'branch', 'collectedBy', 'receipt', 'invoice']);
         });
     }

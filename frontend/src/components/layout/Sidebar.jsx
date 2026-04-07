@@ -2,7 +2,8 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Package, ShoppingCart, FileText,
   CreditCard, Receipt, BarChart3, UserCog, Building2,
-  Settings, LogOut, ChevronLeft, ChevronRight,
+  Settings, LogOut, ChevronLeft, ChevronRight, Truck, Building,
+  Wallet, ReceiptText, ListOrdered,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLang } from '../../context/LangContext';
@@ -13,6 +14,11 @@ const navItems = [
   { key: 'dashboard', path: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', exact: true, permission: null },
   { key: 'customers', path: '/customers', icon: Users, labelKey: 'nav.customers', permission: 'customers.view' },
   { key: 'products', path: '/products', icon: Package, labelKey: 'nav.products', permission: 'products.view' },
+  { key: 'suppliers', path: '/suppliers', icon: Building, labelKey: 'nav.suppliers', permission: 'suppliers.view' },
+  { key: 'purchases', path: '/purchases', icon: Truck, labelKey: 'nav.purchases', permission: 'purchases.view' },
+  { key: 'cash', path: '/cash', icon: Wallet, labelKey: 'nav.cash', permission: 'cashboxes.view' },
+  { key: 'expenses', path: '/expenses', icon: ReceiptText, labelKey: 'nav.expenses', permission: 'expenses.view' },
+  { key: 'cashLedger', path: '/cash/transactions', icon: ListOrdered, labelKey: 'nav.cashLedger', permission: 'cash_transactions.view' },
   { key: 'orders', path: '/orders', icon: ShoppingCart, labelKey: 'nav.orders', permission: 'orders.view' },
   { key: 'contracts', path: '/contracts', icon: FileText, labelKey: 'nav.contracts', permission: 'contracts.view' },
   { key: 'collections', path: '/collections', icon: CreditCard, labelKey: 'nav.collections', permission: 'payments.collections' },
@@ -45,7 +51,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside
       className={clsx(
-        'fixed top-0 bottom-0 z-30 flex flex-col bg-white border-e border-gray-200 transition-all duration-300',
+        'fixed top-0 bottom-0 z-30 flex flex-col bg-white border-e border-gray-200 transition-all duration-300 print:hidden',
         isRTL ? 'right-0' : 'left-0',
         collapsed ? 'w-16' : 'w-64'
       )}

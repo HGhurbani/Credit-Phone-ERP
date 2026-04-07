@@ -28,10 +28,10 @@ export default function ContractDetailPage() {
 
   const statusBadge = contractStatusBadge(contract.status);
 
-  const printContract = () => window.print();
+  const goPrint = () => navigate(`/print/contract/${id}`);
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="page-header">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="btn-ghost btn btn-sm no-print"><BackIcon size={16} /></button>
@@ -42,7 +42,7 @@ export default function ContractDetailPage() {
         </div>
         <div className="flex items-center gap-2 no-print">
           <Badge label={t(statusBadge.labelKey)} variant={statusBadge.variant} />
-          <button onClick={printContract} className="btn-secondary btn btn-sm">
+          <button type="button" onClick={goPrint} className="btn-secondary btn btn-sm">
             <Printer size={14} /> {t('contracts.printContract')}
           </button>
         </div>
@@ -151,12 +151,21 @@ export default function ContractDetailPage() {
                 <p className="text-gray-400 text-sm text-center py-8">{t('common.noData')}</p>
               ) : (
                 contract.payments?.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div key={p.id} className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="text-sm font-medium">{p.receipt_number}</p>
                       <p className="text-xs text-gray-400">{formatDate(p.payment_date)} · {p.payment_method} · {p.collected_by}</p>
                     </div>
-                    <span className="font-semibold text-green-600">{formatCurrency(p.amount)}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-semibold text-green-600">{formatCurrency(p.amount)}</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/print/payment/${p.id}`)}
+                        className="btn-ghost btn btn-xs text-primary-600"
+                      >
+                        <Printer size={12} /> {t('print.receiptShort')}
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

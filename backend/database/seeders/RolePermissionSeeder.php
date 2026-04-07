@@ -57,6 +57,20 @@ class RolePermissionSeeder extends Seeder
 
             // Settings
             'settings.view', 'settings.update',
+
+            // Suppliers & purchasing
+            'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
+            'purchases.view', 'purchases.create', 'purchases.update', 'purchases.delete',
+            'purchases.receive', 'purchases.update_status',
+
+            // Cash & expenses (operational)
+            'cashboxes.view', 'cashboxes.manage',
+            'cash_transactions.view',
+            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete',
+
+            // Collections — customer statement & follow-up
+            'customer_statement.view',
+            'collections.followup.view', 'collections.followup.create',
         ];
 
         foreach ($permissions as $perm) {
@@ -84,6 +98,12 @@ class RolePermissionSeeder extends Seeder
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'brands.view', 'brands.create', 'brands.update', 'brands.delete',
             'roles.view',
+            'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
+            'purchases.view', 'purchases.create', 'purchases.update', 'purchases.delete',
+            'purchases.receive', 'purchases.update_status',
+            'cashboxes.view', 'cashboxes.manage', 'cash_transactions.view',
+            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete',
+            'customer_statement.view', 'collections.followup.view', 'collections.followup.create',
         ]);
 
         // Branch Manager
@@ -100,6 +120,12 @@ class RolePermissionSeeder extends Seeder
             'payments.view', 'payments.create', 'payments.collections',
             'invoices.view', 'invoices.record_payment', 'invoices.update',
             'reports.view',
+            'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
+            'purchases.view', 'purchases.create', 'purchases.update', 'purchases.delete',
+            'purchases.receive', 'purchases.update_status',
+            'cashboxes.view', 'cashboxes.manage', 'cash_transactions.view',
+            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete',
+            'customer_statement.view', 'collections.followup.view', 'collections.followup.create',
         ]);
 
         // Sales Agent
@@ -121,6 +147,9 @@ class RolePermissionSeeder extends Seeder
             'payments.view', 'payments.create', 'payments.collections',
             'invoices.view',
             'categories.view', 'brands.view',
+            'cashboxes.view',
+            'customer_statement.view',
+            'collections.followup.view', 'collections.followup.create',
         ]);
 
         // Accountant
@@ -134,6 +163,11 @@ class RolePermissionSeeder extends Seeder
             'invoices.view', 'invoices.record_payment', 'invoices.update',
             'reports.view', 'reports.export',
             'categories.view', 'brands.view',
+            'suppliers.view',
+            'purchases.view',
+            'cashboxes.view', 'cash_transactions.view',
+            'expenses.view',
+            'customer_statement.view', 'collections.followup.view',
         ]);
     }
 }

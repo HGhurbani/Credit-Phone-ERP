@@ -10,7 +10,7 @@ export default function Topbar({ sidebarCollapsed }) {
 
   return (
     <header
-      className="fixed top-0 right-0 left-0 h-16 bg-white border-b border-gray-200 z-20 flex items-center px-6"
+      className="fixed top-0 right-0 left-0 h-16 bg-white border-b border-gray-200 z-20 flex items-center px-6 print:hidden"
       style={{
         [isRTL ? 'marginRight' : 'marginLeft']: sidebarWidth,
         transition: 'margin 300ms',

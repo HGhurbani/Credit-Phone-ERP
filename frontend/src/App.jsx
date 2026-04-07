@@ -11,6 +11,10 @@ import CustomerDetailPage from './pages/customers/CustomerDetailPage';
 import ProductsPage from './pages/products/ProductsPage';
 import ProductFormPage from './pages/products/ProductFormPage';
 import ProductDetailPage from './pages/products/ProductDetailPage';
+import SuppliersPage from './pages/suppliers/SuppliersPage';
+import PurchasesPage from './pages/purchases/PurchasesPage';
+import PurchaseFormPage from './pages/purchases/PurchaseFormPage';
+import PurchaseDetailPage from './pages/purchases/PurchaseDetailPage';
 import OrdersPage from './pages/orders/OrdersPage';
 import OrderFormPage from './pages/orders/OrderFormPage';
 import OrderDetailPage from './pages/orders/OrderDetailPage';
@@ -23,6 +27,15 @@ import ReportsPage from './pages/reports/ReportsPage';
 import UsersPage from './pages/users/UsersPage';
 import BranchesPage from './pages/branches/BranchesPage';
 import SettingsPage from './pages/settings/SettingsPage';
+import CashboxPage from './pages/cash/CashboxPage';
+import CashTransactionsPage from './pages/cash/CashTransactionsPage';
+import VoucherPrintPage from './pages/cash/VoucherPrintPage';
+import ExpensesPage from './pages/expenses/ExpensesPage';
+import ContractPrintPage from './pages/print/ContractPrintPage';
+import InvoicePrintPage from './pages/print/InvoicePrintPage';
+import PaymentReceiptPrintPage from './pages/print/PaymentReceiptPrintPage';
+import StatementPrintPage from './pages/print/StatementPrintPage';
+import PurchaseOrderPrintPage from './pages/print/PurchaseOrderPrintPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -44,6 +57,13 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      {/* Dedicated print views (no app chrome — A4-friendly) */}
+      <Route path="/print/contract/:id" element={<PrivateRoute><ContractPrintPage /></PrivateRoute>} />
+      <Route path="/print/invoice/:id" element={<PrivateRoute><InvoicePrintPage /></PrivateRoute>} />
+      <Route path="/print/payment/:id" element={<PrivateRoute><PaymentReceiptPrintPage /></PrivateRoute>} />
+      <Route path="/print/statement/:id" element={<PrivateRoute><StatementPrintPage /></PrivateRoute>} />
+      <Route path="/print/purchase-order/:id" element={<PrivateRoute><PurchaseOrderPrintPage /></PrivateRoute>} />
+      <Route path="/cash/voucher/:id" element={<PrivateRoute><VoucherPrintPage /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="customers" element={<CustomersPage />} />
@@ -52,6 +72,14 @@ function AppRoutes() {
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<ProductFormPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="purchases/new" element={<PurchaseFormPage />} />
+        <Route path="purchases/:id/edit" element={<PurchaseFormPage />} />
+        <Route path="purchases/:id" element={<PurchaseDetailPage />} />
+        <Route path="purchases" element={<PurchasesPage />} />
+        <Route path="cash/transactions" element={<CashTransactionsPage />} />
+        <Route path="cash" element={<CashboxPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/new" element={<OrderFormPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />

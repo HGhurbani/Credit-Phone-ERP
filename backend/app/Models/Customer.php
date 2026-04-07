@@ -71,6 +71,21 @@ class Customer extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    public function collectionFollowUps()
+    {
+        return $this->hasMany(CollectionFollowUp::class);
+    }
+
+    public function promiseToPays()
+    {
+        return $this->hasMany(PromiseToPay::class);
+    }
+
+    public function rescheduleRequests()
+    {
+        return $this->hasMany(RescheduleRequest::class);
+    }
+
     public function scopeForTenant($query, $tenantId)
     {
         return $query->where('tenant_id', $tenantId);

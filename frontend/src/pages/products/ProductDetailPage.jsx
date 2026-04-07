@@ -53,7 +53,7 @@ export default function ProductDetailPage() {
   if (!product) return null;
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="page-header">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="btn-ghost btn btn-sm"><BackIcon size={16} /></button>

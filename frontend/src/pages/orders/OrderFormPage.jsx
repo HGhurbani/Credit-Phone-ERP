@@ -96,7 +96,7 @@ export default function OrderFormPage() {
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full min-w-0">
       <div className="page-header mb-6">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="btn-ghost btn btn-sm"><BackIcon size={16} /></button>
