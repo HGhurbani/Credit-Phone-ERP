@@ -15,6 +15,10 @@ class PaymentService
 {
     private const MONEY_SCALE = 2;
 
+    public function __construct(
+        private readonly DocumentPostingService $documentPostingService,
+    ) {}
+
     public function record(InstallmentContract $contract, array $data, int $userId): Payment
     {
         return DB::transaction(function () use ($contract, $data, $userId) {
@@ -115,6 +119,8 @@ class PaymentService
                     $userId
                 );
             }
+
+            $this->documentPostingService->postContractPayment($payment, $userId);
 
             return $payment;
         });

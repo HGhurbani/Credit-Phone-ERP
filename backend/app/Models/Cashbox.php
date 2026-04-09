@@ -9,13 +9,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Cashbox extends Model
 {
     protected $fillable = [
-        'tenant_id', 'branch_id', 'name', 'opening_balance', 'current_balance', 'is_active',
+        'tenant_id',
+        'branch_id',
+        'name',
+        'type',
+        'opening_balance',
+        'current_balance',
+        'is_active',
+        'is_primary',
     ];
 
     protected $casts = [
         'opening_balance' => 'decimal:2',
         'current_balance' => 'decimal:2',
         'is_active' => 'boolean',
+        'is_primary' => 'boolean',
     ];
 
     public function tenant(): BelongsTo

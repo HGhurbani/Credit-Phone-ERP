@@ -1,24 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Eye, Trash2, Package } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { Plus, Eye, Trash2, Package, Pencil } from 'lucide-react';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge from '../../components/ui/Badge';
 import { ConfirmModal } from '../../components/ui/Modal';
 import { productsApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/format';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../hooks/useDebounce';
 
 export default function ProductsPage() {
   const { t } = useLang();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -27,7 +30,7 @@ export default function ProductsPage() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await productsApi.list({ search: debouncedSearch, page, per_page: 15 });
+      const res = await productsApi.list({ search: debouncedSearch, page, per_page: getPerPageRequestValue(perPage) });
       setProducts(res.data.data);
       setMeta(res.data.meta);
     } catch {
@@ -35,7 +38,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, page, t]);
+  }, [debouncedSearch, page, perPage, t]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -52,6 +55,8 @@ export default function ProductsPage() {
       setDeleting(false);
     }
   };
+
+  const canUpdate = hasPermission('products.update');
 
   const columns = [
     {
@@ -88,6 +93,9 @@ export default function ProductsPage() {
       render: (row) => (
         <div className="flex items-center gap-2">
           <button onClick={() => navigate(`/products/${row.id}`)} className="btn-ghost btn btn-sm"><Eye size={14} /></button>
+          {canUpdate && (
+            <button onClick={() => navigate(`/products/${row.id}/edit`)} className="btn-ghost btn btn-sm"><Pencil size={14} /></button>
+          )}
           <button onClick={() => setDeleteTarget(row)} className="btn-ghost btn btn-sm text-red-500 hover:bg-red-50"><Trash2 size={14} /></button>
         </div>
       ),
@@ -111,7 +119,12 @@ export default function ProductsPage() {
       </div>
 
       <DataTable columns={columns} data={products} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
 
       <ConfirmModal
         open={!!deleteTarget}

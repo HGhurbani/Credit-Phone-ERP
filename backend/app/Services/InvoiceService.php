@@ -2,43 +2,55 @@
 
 namespace App\Services;
 
+use App\Models\Inventory;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceService
 {
-    public function createFromOrder(Order $order): Invoice
+    public function __construct(
+        private readonly DocumentPostingService $documentPostingService,
+    ) {}
+
+    public function createFromOrder(Order $order, ?int $userId = null): Invoice
     {
-        $items = $order->items->map(fn($item) => [
-            'description' => $item->product_name . ($item->product_sku ? " ({$item->product_sku})" : ''),
-            'quantity' => $item->quantity,
-            'unit_price' => $item->unit_price,
-            'total' => $item->total,
-        ])->toArray();
+        return DB::transaction(function () use ($order, $userId) {
+            $items = $order->items->map(fn ($item) => [
+                'description' => $item->product_name.($item->product_sku ? " ({$item->product_sku})" : ''),
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+                'total' => $item->total,
+            ])->toArray();
 
-        $invoice = Invoice::create([
-            'tenant_id' => $order->tenant_id,
-            'branch_id' => $order->branch_id,
-            'customer_id' => $order->customer_id,
-            'order_id' => $order->id,
-            'invoice_number' => $this->generateInvoiceNumber($order->tenant_id),
-            'type' => $order->type === 'cash' ? 'cash' : 'installment',
-            'status' => 'unpaid',
-            'subtotal' => $order->subtotal,
-            'discount_amount' => $order->discount_amount,
-            'total' => $order->total,
-            'paid_amount' => 0,
-            'remaining_amount' => $order->total,
-            'issue_date' => today(),
-            'due_date' => $order->type === 'cash' ? today() : null,
-        ]);
+            $invoice = Invoice::create([
+                'tenant_id' => $order->tenant_id,
+                'branch_id' => $order->branch_id,
+                'customer_id' => $order->customer_id,
+                'order_id' => $order->id,
+                'invoice_number' => $this->generateInvoiceNumber($order->tenant_id),
+                'type' => $order->type === 'cash' ? 'cash' : 'installment',
+                'status' => 'unpaid',
+                'subtotal' => $order->subtotal,
+                'discount_amount' => $order->discount_amount,
+                'total' => $order->total,
+                'paid_amount' => 0,
+                'remaining_amount' => $order->total,
+                'issue_date' => today(),
+                'due_date' => $order->type === 'cash' ? today() : null,
+            ]);
 
-        $invoice->items()->createMany($items);
+            $invoice->items()->createMany($items);
 
-        return $invoice->load(['customer', 'order', 'items']);
+            if ($invoice->type === 'cash') {
+                $this->documentPostingService->postCashSaleInvoice($invoice, $userId);
+            }
+
+            return $invoice->load(['customer', 'order', 'items']);
+        });
     }
 
     public function markPaid(Invoice $invoice, float $amount): Invoice
@@ -110,6 +122,8 @@ class InvoiceService
                 );
             }
 
+            $this->documentPostingService->postInvoicePayment($payment, $userId);
+
             return $payment->load(['customer', 'branch', 'collectedBy', 'receipt', 'invoice']);
         });
     }
@@ -119,16 +133,66 @@ class InvoiceService
      */
     public function cancel(Invoice $invoice): Invoice
     {
-        if ($invoice->status === 'paid') {
-            throw new \InvalidArgumentException('Cannot cancel a fully paid invoice.');
-        }
-        if ($invoice->status === 'cancelled') {
-            return $invoice;
+        return DB::transaction(function () use ($invoice) {
+            if ($invoice->status === 'paid') {
+                throw new \InvalidArgumentException('Cannot cancel a fully paid invoice.');
+            }
+            if ($invoice->status === 'cancelled') {
+                return $invoice;
+            }
+            if ((float) $invoice->paid_amount > 0.0001 || $invoice->payments()->exists()) {
+                throw new \InvalidArgumentException('Cannot cancel an invoice after payments have been recorded.');
+            }
+
+            $invoice->loadMissing(['order.items.product']);
+
+            if ($invoice->type === 'cash' && $invoice->order !== null) {
+                $this->restoreStockForOrder($invoice);
+                $invoice->order->update(['status' => 'cancelled']);
+                $this->documentPostingService->reverseCashSaleInvoice($invoice, auth()->id());
+            }
+
+            $invoice->update(['status' => 'cancelled']);
+
+            return $invoice->fresh();
+        });
+    }
+
+    private function restoreStockForOrder(Invoice $invoice): void
+    {
+        $order = $invoice->order;
+
+        if ($order === null) {
+            return;
         }
 
-        $invoice->update(['status' => 'cancelled']);
+        foreach ($order->items as $item) {
+            $inventory = Inventory::firstOrCreate(
+                [
+                    'product_id' => $item->product_id,
+                    'branch_id' => $order->branch_id,
+                ],
+                ['quantity' => 0]
+            );
 
-        return $invoice->fresh();
+            $before = (int) $inventory->quantity;
+            $inventory->increment('quantity', (int) $item->quantity);
+            $inventory->refresh();
+
+            StockMovement::create([
+                'product_id' => $item->product_id,
+                'branch_id' => $order->branch_id,
+                'created_by' => auth()->id(),
+                'type' => 'in',
+                'quantity' => (int) $item->quantity,
+                'quantity_before' => $before,
+                'quantity_after' => (int) $inventory->quantity,
+                'reference_type' => Invoice::class,
+                'reference_id' => $invoice->id,
+                'serial_number' => $item->serial_number,
+                'notes' => 'Invoice cancellation stock return',
+            ]);
+        }
     }
 
     private function generateInvoiceNumber(int $tenantId): string

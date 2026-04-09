@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Eye } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge, { orderStatusBadge } from '../../components/ui/Badge';
 import { ordersApi } from '../../api/client';
@@ -20,13 +20,14 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
 
   const debouncedSearch = useDebounce(search, 400);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await ordersApi.list({ search: debouncedSearch, status: statusFilter, type: typeFilter, page, per_page: 15 });
+      const res = await ordersApi.list({ search: debouncedSearch, status: statusFilter, type: typeFilter, page, per_page: getPerPageRequestValue(perPage) });
       setOrders(res.data.data);
       setMeta(res.data.meta);
     } catch {
@@ -34,7 +35,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, typeFilter, page, t]);
+  }, [debouncedSearch, statusFilter, typeFilter, page, perPage, t]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -90,7 +91,12 @@ export default function OrdersPage() {
       </div>
 
       <DataTable columns={columns} data={orders} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
     </div>
   );
 }

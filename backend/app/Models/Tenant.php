@@ -56,9 +56,29 @@ class Tenant extends Model
         return $this->hasMany(Subscription::class);
     }
 
+    public function latestSubscription()
+    {
+        return $this->hasOne(Subscription::class)->latestOfMany();
+    }
+
     public function settings()
     {
         return $this->hasMany(Setting::class);
+    }
+
+    public function assistantThreads()
+    {
+        return $this->hasMany(AssistantThread::class);
+    }
+
+    public function assistantMessages()
+    {
+        return $this->hasMany(AssistantMessage::class);
+    }
+
+    public function telegramUserLinks()
+    {
+        return $this->hasMany(TelegramUserLink::class);
     }
 
     public function mainBranch()

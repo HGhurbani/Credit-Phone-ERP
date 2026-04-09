@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import toast from 'react-hot-toast';
 import Badge from '../../components/ui/Badge';
+import { cashTxTypeLabelKey } from '../../i18n/cashLabels';
 
 const TX_TYPES_IN = ['other_in'];
 const TX_TYPES_OUT = ['other_out', 'purchase_payment_out'];
@@ -16,6 +17,9 @@ const TX_TYPES_OUT = ['other_out', 'purchase_payment_out'];
 export default function CashboxPage() {
   const { t } = useLang();
   const { user, hasPermission, hasRole } = useAuth();
+
+  const showCreateBranchPicker =
+    !user?.branch_id && (hasRole('company_admin') || hasPermission('branches.view'));
   const [boxes, setBoxes] = useState([]);
   const [recent, setRecent] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -23,7 +27,13 @@ export default function CashboxPage() {
   const [modal, setModal] = useState(null);
   const [adjModal, setAdjModal] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ branch_id: '', name: t('cash.defaultBoxName'), opening_balance: '0' });
+  const [createForm, setCreateForm] = useState({
+    branch_id: '',
+    name: t('cash.defaultBoxName'),
+    type: '',
+    is_primary: true,
+    opening_balance: '0',
+  });
   const [txForm, setTxForm] = useState({
     cashbox_id: '', transaction_type: 'other_in', amount: '', transaction_date: new Date().toISOString().split('T')[0], notes: '',
   });
@@ -32,7 +42,6 @@ export default function CashboxPage() {
   });
   const [saving, setSaving] = useState(false);
 
-  const showBranchFilter = !user?.branch_id && (hasRole('company_admin') || hasPermission('branches.view'));
   const canManage = hasPermission('cashboxes.manage');
 
   const load = useCallback(async () => {
@@ -54,10 +63,27 @@ export default function CashboxPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (showBranchFilter) {
+    if (showCreateBranchPicker) {
       branchesApi.list().then((r) => setBranches(r.data.data || [])).catch(() => {});
     }
-  }, [showBranchFilter]);
+  }, [showCreateBranchPicker]);
+
+  useEffect(() => {
+    if (user?.branch_id) {
+      setCreateForm((f) => ({ ...f, branch_id: String(user.branch_id) }));
+    }
+  }, [user?.branch_id]);
+
+  const openCreateModal = () => {
+    setCreateForm({
+      branch_id: user?.branch_id ? String(user.branch_id) : '',
+      name: t('cash.defaultBoxName'),
+      type: '',
+      is_primary: true,
+      opening_balance: '0',
+    });
+    setCreateOpen(true);
+  };
 
   const openTx = (cashbox) => {
     setTxForm({
@@ -123,11 +149,20 @@ export default function CashboxPage() {
 
   const submitCreate = async (e) => {
     e.preventDefault();
+    const branchId = user?.branch_id
+      ? Number(user.branch_id)
+      : parseInt(createForm.branch_id, 10);
+    if (!branchId || Number.isNaN(branchId)) {
+      toast.error(t('purchases.branchRequired'));
+      return;
+    }
     setSaving(true);
     try {
       await cashboxesApi.create({
-        branch_id: parseInt(createForm.branch_id, 10),
+        branch_id: branchId,
         name: createForm.name,
+        type: createForm.type?.trim() ? createForm.type.trim() : null,
+        is_primary: !!createForm.is_primary,
         opening_balance: parseFloat(createForm.opening_balance) || 0,
       });
       toast.success(t('common.success'));
@@ -151,8 +186,8 @@ export default function CashboxPage() {
           {hasPermission('cash_transactions.view') && (
             <Link to="/cash/transactions" className="btn-secondary btn btn-sm">{t('cash.viewLedger')}</Link>
           )}
-          {canManage && showBranchFilter && (
-            <button type="button" onClick={() => setCreateOpen(true)} className="btn-primary btn btn-sm">
+          {canManage && (
+            <button type="button" onClick={openCreateModal} className="btn-primary btn btn-sm">
               <Plus size={16} /> {t('cash.createBox')}
             </button>
           )}
@@ -172,10 +207,16 @@ export default function CashboxPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">{cb.name}</p>
-                    <p className="text-xs text-gray-500">{cb.branch?.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {cb.branch?.name}
+                      {cb.type ? <span className="text-gray-400"> · {cb.type}</span> : null}
+                    </p>
                   </div>
                 </div>
-                {cb.is_active ? <Badge label={t('common.active')} variant="green" /> : <Badge label={t('common.inactive')} variant="gray" />}
+                <div className="flex flex-col items-end gap-1">
+                  {cb.is_primary ? <Badge label={t('cash.primary')} variant="blue" /> : <Badge label={t('cash.secondary')} variant="gray" />}
+                  {cb.is_active ? <Badge label={t('common.active')} variant="green" /> : <Badge label={t('common.inactive')} variant="gray" />}
+                </div>
               </div>
               <p className="text-xs text-gray-500 mb-1">{t('cash.currentBalance')}</p>
               <p className="text-2xl font-bold text-primary-700 mb-4">{formatCurrency(cb.current_balance)}</p>
@@ -194,8 +235,8 @@ export default function CashboxPage() {
           {boxes.length === 0 && (
             <div className="card p-8 text-center text-gray-500 col-span-full">
               <p>{t('cash.noBoxes')}</p>
-              {canManage && showBranchFilter && (
-                <button type="button" onClick={() => setCreateOpen(true)} className="btn-primary btn mt-4">{t('cash.createBox')}</button>
+              {canManage && (
+                <button type="button" onClick={openCreateModal} className="btn-primary btn mt-4">{t('cash.createBox')}</button>
               )}
             </div>
           )}
@@ -227,7 +268,7 @@ export default function CashboxPage() {
                   <td className="py-2 pe-4 font-mono text-xs">{row.voucher_number || '—'}</td>
                   <td className="py-2 pe-4">{formatDate(row.transaction_date)}</td>
                   <td className="py-2 pe-4">{row.branch?.name || '—'}</td>
-                  <td className="py-2 pe-4">{row.transaction_type}</td>
+                  <td className="py-2 pe-4">{t(cashTxTypeLabelKey(row.transaction_type))}</td>
                   <td className={`py-2 pe-4 font-medium ${row.direction === 'in' ? 'text-green-700' : 'text-red-700'}`}>
                     {row.direction === 'in' ? '+' : '−'}{formatCurrency(row.amount)}
                   </td>
@@ -260,7 +301,7 @@ export default function CashboxPage() {
             <label className="block text-xs font-medium text-gray-600 mb-1">{t('cash.txType')}</label>
             <Select value={txForm.transaction_type} onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value })}>
               {[...TX_TYPES_IN, ...TX_TYPES_OUT].map((x) => (
-                <option key={x} value={x}>{x}</option>
+                <option key={x} value={x}>{t(cashTxTypeLabelKey(x))}</option>
               ))}
             </Select>
           </div>
@@ -325,19 +366,41 @@ export default function CashboxPage() {
         )}
       >
         <form id="cash-create-form" onSubmit={submitCreate} className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.branch')} *</label>
-            <Select required value={createForm.branch_id} onChange={(e) => setCreateForm({ ...createForm, branch_id: e.target.value })}>
-              <option value="">{t('ui.selectBranch')}</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </Select>
-          </div>
+          {showCreateBranchPicker ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.branch')} *</label>
+              <Select required value={createForm.branch_id} onChange={(e) => setCreateForm({ ...createForm, branch_id: e.target.value })}>
+                <option value="">{t('ui.selectBranch')}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </Select>
+            </div>
+          ) : user?.branch_id ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.branch')}</label>
+              <p className="text-sm text-gray-800 py-2 px-3 rounded-lg bg-gray-50 border border-gray-100">
+                {user.branch?.name ?? `#${user.branch_id}`}
+              </p>
+            </div>
+          ) : null}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.name')}</label>
             <Input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t('cash.typeOptional')}</label>
+            <Input value={createForm.type} onChange={(e) => setCreateForm({ ...createForm, type: e.target.value })} placeholder={t('cash.typePlaceholder')} />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={!!createForm.is_primary}
+              onChange={(e) => setCreateForm({ ...createForm, is_primary: e.target.checked })}
+            />
+            {t('cash.setPrimary')}
+          </label>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">{t('cash.openingBalance')}</label>
             <Input type="number" step="0.01" value={createForm.opening_balance} onChange={(e) => setCreateForm({ ...createForm, opening_balance: e.target.value })} />

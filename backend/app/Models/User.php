@@ -39,6 +39,26 @@ class User extends Authenticatable
         return $this->belongsTo(Branch::class);
     }
 
+    public function assistantThreads()
+    {
+        return $this->hasMany(AssistantThread::class);
+    }
+
+    public function assistantMessages()
+    {
+        return $this->hasMany(AssistantMessage::class);
+    }
+
+    public function telegramLink()
+    {
+        return $this->hasOne(TelegramUserLink::class);
+    }
+
+    public function telegramLinkCodes()
+    {
+        return $this->hasMany(TelegramLinkCode::class);
+    }
+
     public function isSuperAdmin(): bool
     {
         return (bool) $this->is_super_admin;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard, AlertTriangle, Clock } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import Badge, { scheduleStatusBadge } from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import { paymentsApi } from '../../api/client';
@@ -18,6 +18,7 @@ export default function CollectionsPage() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
   const [paymentModal, setPaymentModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], reference_number: '', collector_notes: '' });
@@ -27,12 +28,12 @@ export default function CollectionsPage() {
     setLoading(true);
     try {
       const fn = tab === 'due_today' ? paymentsApi.dueToday : paymentsApi.overdue;
-      const res = await fn({ page, per_page: 20 });
+      const res = await fn({ page, per_page: getPerPageRequestValue(perPage) });
       setData(res.data.data);
       setMeta(res.data.meta);
     } catch { toast.error(t('common.error')); }
     finally { setLoading(false); }
-  }, [tab, page, t]);
+  }, [tab, page, perPage, t]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -132,7 +133,12 @@ export default function CollectionsPage() {
       </div>
 
       <DataTable columns={columns} data={data} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
 
       {/* Payment Modal */}
       <Modal open={paymentModal} onClose={() => setPaymentModal(false)} title={t('collections.recordPayment')} size="md"

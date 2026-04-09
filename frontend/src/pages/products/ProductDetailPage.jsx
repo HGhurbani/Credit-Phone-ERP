@@ -5,14 +5,17 @@ import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import { productsApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/format';
 import toast from 'react-hot-toast';
 
 export default function ProductDetailPage() {
   const { id } = useParams();
   const { t, isRTL } = useLang();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
+  const canUpdateProduct = hasPermission('products.update');
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +67,12 @@ export default function ProductDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge label={product.is_active ? t('common.active') : t('common.inactive')} variant={product.is_active ? 'green' : 'gray'} />
+          {canUpdateProduct && (
+            <button type="button" onClick={() => navigate(`/products/${product.id}/edit`)} className="btn-secondary btn btn-sm">
+              <Edit size={14} />
+              {t('common.edit')}
+            </button>
+          )}
           <button onClick={() => setStockModal(true)} className="btn-secondary btn btn-sm">
             {t('products.adjustStock')}
           </button>

@@ -27,7 +27,20 @@ class InvoiceResource extends JsonResource
             'order' => $this->whenLoaded('order', fn() => $this->order ? ['id' => $this->order->id, 'order_number' => $this->order->order_number] : null),
             'contract' => $this->whenLoaded('contract', fn() => $this->contract ? ['id' => $this->contract->id, 'contract_number' => $this->contract->contract_number] : null),
             'items' => $this->whenLoaded('items'),
-            'payments' => $this->whenLoaded('payments', fn() => $this->payments->map(fn($p) => ['id' => $p->id, 'amount' => $p->amount, 'payment_date' => $p->payment_date?->toDateString()])),
+            'payments' => $this->whenLoaded('payments', fn () => $this->payments->map(fn ($p) => [
+                'id' => $p->id,
+                'receipt_number' => $p->receipt_number,
+                'amount' => $p->amount,
+                'payment_method' => $p->payment_method,
+                'payment_date' => $p->payment_date?->toDateString(),
+                'reference_number' => $p->reference_number,
+                'collector_notes' => $p->collector_notes,
+                'collected_by' => $p->relationLoaded('collectedBy') && $p->collectedBy ? [
+                    'id' => $p->collectedBy->id,
+                    'name' => $p->collectedBy->name,
+                ] : null,
+                'receipt' => $p->relationLoaded('receipt') ? $p->receipt : null,
+            ])->values()),
             'created_at' => $this->created_at?->toDateTimeString(),
         ];
     }

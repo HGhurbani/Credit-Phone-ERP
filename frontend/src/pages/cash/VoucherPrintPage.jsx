@@ -4,6 +4,7 @@ import { cashTransactionsApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import PrintChrome from '../../components/print/PrintChrome';
+import { cashTxTypeLabelKey } from '../../i18n/cashLabels';
 
 export default function VoucherPrintPage() {
   const { id } = useParams();
@@ -34,7 +35,7 @@ export default function VoucherPrintPage() {
         <div className="flex justify-between gap-4"><dt className="text-gray-500">{t('common.date')}</dt><dd>{formatDate(row.transaction_date)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-gray-500">{t('common.branch')}</dt><dd>{row.branch?.name}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-gray-500">{t('cash.cashbox')}</dt><dd>{row.cashbox?.name}</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-gray-500">{t('cash.txType')}</dt><dd>{row.transaction_type}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-gray-500">{t('cash.txType')}</dt><dd>{t(cashTxTypeLabelKey(row.transaction_type))}</dd></div>
         <div className="flex justify-between text-lg font-semibold pt-2 border-t border-gray-100">
           <dt className="text-gray-700">{t('common.amount')}</dt>
           <dd className={isReceipt ? 'text-green-700' : 'text-red-700'}>{formatCurrency(row.amount)}</dd>

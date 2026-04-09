@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, FileText, ShoppingCart, CreditCard, MessageSquare, Plus,
-  ScrollText, History, Printer,
+  ScrollText, History, Printer, Pencil,
 } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
+import { Pagination, useLocalPagination } from '../../components/ui/Table';
 import { customersApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { useAuth } from '../../context/AuthContext';
@@ -26,6 +27,7 @@ export default function CustomerDetailPage() {
   const showStatement = hasPermission('customer_statement.view');
   const showFollowUp = hasPermission('collections.followup.view');
   const canCreateFollow = hasPermission('collections.followup.create');
+  const canUpdateCustomer = hasPermission('customers.update');
 
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -204,6 +206,8 @@ export default function CustomerDetailPage() {
   };
 
   const creditVariant = { excellent: 'green', good: 'blue', fair: 'yellow', poor: 'red' };
+  const activeContractsPagination = useLocalPagination(stmt?.active_contracts || []);
+  const overdueInstallmentsPagination = useLocalPagination(stmt?.overdue_installments || []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
@@ -236,6 +240,12 @@ export default function CustomerDetailPage() {
           <div className="flex items-center gap-2">
             <Badge label={customer.is_active ? t('common.active') : t('common.inactive')} variant={customer.is_active ? 'green' : 'gray'} />
             <Badge label={t(`customers.credit${creditScoreKey.charAt(0).toUpperCase() + creditScoreKey.slice(1)}`)} variant={creditVariant[creditScoreKey] || 'gray'} />
+            {canUpdateCustomer && (
+              <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="btn-secondary btn btn-sm">
+                <Pencil size={14} />
+                {t('common.edit')}
+              </button>
+            )}
             <button type="button" onClick={() => navigate(`/orders/new?customer_id=${customer.id}`)} className="btn-primary btn btn-sm">
               <Plus size={14} />
               {t('orders.add')}
@@ -316,30 +326,41 @@ export default function CustomerDetailPage() {
                     {stmt.active_contracts?.length === 0 ? (
                       <p className="text-sm text-gray-400">{t('common.noData')}</p>
                     ) : (
-                      <div className="overflow-x-auto border border-gray-100 rounded-lg">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="text-start p-2">{t('contracts.contractNumber')}</th>
-                              <th className="text-start p-2">{t('common.status')}</th>
-                              <th className="text-end p-2">{t('contracts.remainingAmount')}</th>
-                              <th className="text-end p-2">{t('contracts.paidAmount')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {stmt.active_contracts.map(c => (
-                              <tr key={c.id} className="border-t border-gray-100">
-                                <td className="p-2 font-mono">
-                                  <Link to={`/contracts/${c.id}`} className="text-primary-600 hover:underline">{c.contract_number}</Link>
-                                </td>
-                                <td className="p-2">{c.status}</td>
-                                <td className="p-2 text-end">{formatCurrency(c.remaining_amount)}</td>
-                                <td className="p-2 text-end">{formatCurrency(c.paid_amount)}</td>
+                      <>
+                        <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="text-start p-2">{t('contracts.contractNumber')}</th>
+                                <th className="text-start p-2">{t('common.status')}</th>
+                                <th className="text-end p-2">{t('contracts.remainingAmount')}</th>
+                                <th className="text-end p-2">{t('contracts.paidAmount')}</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {activeContractsPagination.rows.map(c => (
+                                <tr key={c.id} className="border-t border-gray-100">
+                                  <td className="p-2 font-mono">
+                                    <Link to={`/contracts/${c.id}`} className="text-primary-600 hover:underline">{c.contract_number}</Link>
+                                  </td>
+                                  <td className="p-2">{c.status}</td>
+                                  <td className="p-2 text-end">{formatCurrency(c.remaining_amount)}</td>
+                                  <td className="p-2 text-end">{formatCurrency(c.paid_amount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <Pagination
+                          total={activeContractsPagination.total}
+                          currentPage={activeContractsPagination.page}
+                          lastPage={activeContractsPagination.lastPage}
+                          perPage={activeContractsPagination.perPage}
+                          pageSize={activeContractsPagination.pageSize}
+                          onPageChange={activeContractsPagination.setPage}
+                          onPageSizeChange={(value) => { activeContractsPagination.setPageSize(value); activeContractsPagination.setPage(1); }}
+                        />
+                      </>
                     )}
                   </div>
 
@@ -348,28 +369,39 @@ export default function CustomerDetailPage() {
                     {stmt.overdue_installments?.length === 0 ? (
                       <p className="text-sm text-gray-400">{t('common.noData')}</p>
                     ) : (
-                      <div className="overflow-x-auto border border-red-100 rounded-lg bg-red-50/30">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-red-50">
-                            <tr>
-                              <th className="text-start p-2">{t('contracts.contractNumber')}</th>
-                              <th className="text-start p-2">{t('collections.installmentNumber')}</th>
-                              <th className="text-start p-2">{t('collections.dueDate')}</th>
-                              <th className="text-end p-2">{t('contracts.remainingAmount')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {stmt.overdue_installments.map(s => (
-                              <tr key={s.id} className="border-t border-red-100">
-                                <td className="p-2 font-mono">{s.contract_number}</td>
-                                <td className="p-2">#{s.installment_number}</td>
-                                <td className="p-2">{formatDate(s.due_date)}</td>
-                                <td className="p-2 text-end font-medium text-red-700">{formatCurrency(s.remaining_amount)}</td>
+                      <>
+                        <div className="overflow-x-auto border border-red-100 rounded-lg bg-red-50/30">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-red-50">
+                              <tr>
+                                <th className="text-start p-2">{t('contracts.contractNumber')}</th>
+                                <th className="text-start p-2">{t('collections.installmentNumber')}</th>
+                                <th className="text-start p-2">{t('collections.dueDate')}</th>
+                                <th className="text-end p-2">{t('contracts.remainingAmount')}</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {overdueInstallmentsPagination.rows.map(s => (
+                                <tr key={s.id} className="border-t border-red-100">
+                                  <td className="p-2 font-mono">{s.contract_number}</td>
+                                  <td className="p-2">#{s.installment_number}</td>
+                                  <td className="p-2">{formatDate(s.due_date)}</td>
+                                  <td className="p-2 text-end font-medium text-red-700">{formatCurrency(s.remaining_amount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <Pagination
+                          total={overdueInstallmentsPagination.total}
+                          currentPage={overdueInstallmentsPagination.page}
+                          lastPage={overdueInstallmentsPagination.lastPage}
+                          perPage={overdueInstallmentsPagination.perPage}
+                          pageSize={overdueInstallmentsPagination.pageSize}
+                          onPageChange={overdueInstallmentsPagination.setPage}
+                          onPageSizeChange={(value) => { overdueInstallmentsPagination.setPageSize(value); overdueInstallmentsPagination.setPage(1); }}
+                        />
+                      </>
                     )}
                   </div>
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Printer } from 'lucide-react';
 import Badge, { contractStatusBadge, scheduleStatusBadge } from '../../components/ui/Badge';
+import { Pagination, useLocalPagination } from '../../components/ui/Table';
 import { contractsApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -22,6 +23,8 @@ export default function ContractDetailPage() {
       .catch(() => { toast.error(t('common.error')); navigate('/contracts'); })
       .finally(() => setLoading(false));
   }, [id, navigate, t]);
+
+  const schedulesPagination = useLocalPagination(contract?.schedules || []);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!contract) return null;
@@ -114,35 +117,46 @@ export default function ContractDetailPage() {
           )}
 
           {activeTab === 'schedule' && (
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>{t('collections.dueDate')}</th>
-                    <th>{t('common.amount')}</th>
-                    <th>{t('collections.paidAmount')}</th>
-                    <th>{t('contracts.remainingAmount')}</th>
-                    <th>{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contract.schedules?.map(s => {
-                    const sb = scheduleStatusBadge(s.status);
-                    return (
-                      <tr key={s.id}>
-                        <td>{s.installment_number}</td>
-                        <td>{formatDate(s.due_date)}</td>
-                        <td>{formatCurrency(s.amount)}</td>
-                        <td>{formatCurrency(s.paid_amount)}</td>
-                        <td>{formatCurrency(s.remaining_amount)}</td>
-                        <td><Badge label={t(sb.labelKey)} variant={sb.variant} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>{t('collections.dueDate')}</th>
+                      <th>{t('common.amount')}</th>
+                      <th>{t('collections.paidAmount')}</th>
+                      <th>{t('contracts.remainingAmount')}</th>
+                      <th>{t('common.status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedulesPagination.rows.map(s => {
+                      const sb = scheduleStatusBadge(s.status);
+                      return (
+                        <tr key={s.id}>
+                          <td>{s.installment_number}</td>
+                          <td>{formatDate(s.due_date)}</td>
+                          <td>{formatCurrency(s.amount)}</td>
+                          <td>{formatCurrency(s.paid_amount)}</td>
+                          <td>{formatCurrency(s.remaining_amount)}</td>
+                          <td><Badge label={t(sb.labelKey)} variant={sb.variant} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                total={schedulesPagination.total}
+                currentPage={schedulesPagination.page}
+                lastPage={schedulesPagination.lastPage}
+                perPage={schedulesPagination.perPage}
+                pageSize={schedulesPagination.pageSize}
+                onPageChange={schedulesPagination.setPage}
+                onPageSizeChange={(value) => { schedulesPagination.setPageSize(value); schedulesPagination.setPage(1); }}
+              />
+            </>
           )}
 
           {activeTab === 'payments' && (

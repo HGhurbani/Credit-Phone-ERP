@@ -52,7 +52,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="input"
-                placeholder="admin@creditphone.com"
+                placeholder="name@example.com"
                 required
                 autoFocus
               />
@@ -95,11 +95,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Demo hint */}
-        <div className="mt-4 bg-white/60 backdrop-blur rounded-xl p-4 text-xs text-gray-500 text-center">
-          <p className="font-medium text-gray-600 mb-1">{t('auth.demoCredentials')}</p>
-          <p>{t('auth.demoEmailLine')}</p>
-        </div>
       </div>
     </div>
   );

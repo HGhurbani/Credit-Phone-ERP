@@ -8,6 +8,8 @@ use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Models\Subscription;
+use App\Models\SubscriptionPlan;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -58,6 +60,57 @@ class DemoSeeder extends Seeder
         Setting::updateOrCreate(
             ['tenant_id' => $tenant->id, 'key' => 'installment_monthly_percent_of_cash'],
             ['value' => '5', 'group' => 'installment', 'type' => 'string']
+        );
+
+        $basicPlan = SubscriptionPlan::firstOrCreate(
+            ['slug' => 'basic'],
+            [
+                'name' => 'Basic',
+                'price' => 199,
+                'interval' => 'monthly',
+                'max_branches' => 1,
+                'max_users' => 5,
+                'features' => ['dashboard', 'customers', 'products'],
+                'is_active' => true,
+            ]
+        );
+
+        SubscriptionPlan::firstOrCreate(
+            ['slug' => 'growth'],
+            [
+                'name' => 'Growth',
+                'price' => 399,
+                'interval' => 'monthly',
+                'max_branches' => 5,
+                'max_users' => 20,
+                'features' => ['dashboard', 'customers', 'products', 'reports', 'assistant'],
+                'is_active' => true,
+            ]
+        );
+
+        SubscriptionPlan::firstOrCreate(
+            ['slug' => 'enterprise'],
+            [
+                'name' => 'Enterprise',
+                'price' => 4999,
+                'interval' => 'yearly',
+                'max_branches' => 999,
+                'max_users' => 999,
+                'features' => ['all_features', 'priority_support'],
+                'is_active' => true,
+            ]
+        );
+
+        Subscription::firstOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'plan_id' => $basicPlan->id,
+            ],
+            [
+                'status' => 'active',
+                'starts_at' => now()->subMonth(),
+                'ends_at' => now()->addMonth(),
+            ]
         );
 
         // Create Main Branch

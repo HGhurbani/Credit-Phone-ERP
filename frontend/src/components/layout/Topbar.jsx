@@ -1,8 +1,8 @@
-import { Bell, Globe, User } from 'lucide-react';
+import { Bell, Globe, Menu, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLang } from '../../context/LangContext';
 
-export default function Topbar({ sidebarCollapsed }) {
+export default function Topbar({ sidebarCollapsed, isMobile, onMenuClick }) {
   const { user } = useAuth();
   const { lang, toggleLang, t, isRTL } = useLang();
 
@@ -12,11 +12,23 @@ export default function Topbar({ sidebarCollapsed }) {
     <header
       className="fixed top-0 right-0 left-0 h-16 bg-white border-b border-gray-200 z-20 flex items-center px-6 print:hidden"
       style={{
-        [isRTL ? 'marginRight' : 'marginLeft']: sidebarWidth,
+        ...(isMobile ? {} : { [isRTL ? 'marginRight' : 'marginLeft']: sidebarWidth }),
         transition: 'margin 300ms',
       }}
     >
-      <div className="flex-1" />
+      <div className="flex items-center gap-2 flex-1">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="p-2 -ms-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+            aria-label={t('ui.openMenu')}
+            title={t('ui.openMenu')}
+          >
+            <Menu size={18} />
+          </button>
+        )}
+      </div>
 
       <div className="flex items-center gap-3">
         {/* Language Toggle */}

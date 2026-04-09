@@ -12,6 +12,9 @@ const SETTING_GROUPS = [
       { key: 'company_phone', type: 'text' },
       { key: 'company_email', type: 'email' },
       { key: 'company_address', type: 'text' },
+      { key: 'company_cr_number', type: 'text' },
+      { key: 'company_license_number', type: 'text' },
+      { key: 'company_tax_card_number', type: 'text' },
     ],
   },
   {
@@ -41,6 +44,35 @@ const SETTING_GROUPS = [
       { key: 'show_logo_on_invoice', type: 'boolean' },
     ],
   },
+  {
+    group: 'assistant',
+    label: 'settings.aiAgent',
+    settings: [
+      { key: 'assistant_enabled', type: 'boolean' },
+      {
+        key: 'assistant_provider',
+        type: 'select',
+        options: [
+          { value: 'openai', labelKey: 'settings.providerOpenai' },
+          { value: 'gemini', labelKey: 'settings.providerGemini' },
+        ],
+      },
+      { key: 'assistant_openai_model', type: 'text' },
+      { key: 'assistant_openai_api_key', type: 'password', configuredKey: 'assistant_openai_api_key_configured' },
+      { key: 'assistant_gemini_model', type: 'text' },
+      { key: 'assistant_gemini_api_key', type: 'password', configuredKey: 'assistant_gemini_api_key_configured' },
+    ],
+  },
+  {
+    group: 'telegram',
+    label: 'settings.telegramIntegration',
+    settings: [
+      { key: 'telegram_enabled', type: 'boolean' },
+      { key: 'telegram_bot_token', type: 'password', configuredKey: 'telegram_bot_token_configured' },
+      { key: 'telegram_webhook_secret', type: 'password', configuredKey: 'telegram_webhook_secret_configured' },
+      { key: 'telegram_webhook_url', type: 'readonly' },
+    ],
+  },
 ];
 
 export default function SettingsPage() {
@@ -49,11 +81,17 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const loadSettings = async () => {
+    const response = await settingsApi.get();
+    setSettings(response.data.data || {});
+  };
+
   useEffect(() => {
-    settingsApi.get().then(r => setSettings(r.data.data || {})).finally(() => setLoading(false));
+    loadSettings().finally(() => setLoading(false));
   }, []);
 
   const handleChange = (key, value) => setSettings(p => ({ ...p, [key]: value }));
+  const assistantProvider = settings.assistant_provider ?? 'openai';
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -61,6 +99,7 @@ export default function SettingsPage() {
     try {
       await settingsApi.update(settings);
       toast.success(t('common.success'));
+      await loadSettings();
     } catch { toast.error(t('common.error')); }
     finally { setSaving(false); }
   };
@@ -83,7 +122,12 @@ export default function SettingsPage() {
               {group.group === 'installment' && (
                 <p className="text-sm text-gray-500 -mt-1">{t('settings.installmentPricingModeHelp')}</p>
               )}
-              {group.settings.map(setting => (
+              {group.settings.filter(setting => {
+                if (group.group !== 'assistant') return true;
+                if (setting.key.startsWith('assistant_openai_')) return assistantProvider === 'openai';
+                if (setting.key.startsWith('assistant_gemini_')) return assistantProvider === 'gemini';
+                return true;
+              }).map(setting => (
                 <div key={setting.key}>
                   <label className="label">{t(`settings.fields.${setting.key}`)}</label>
                   {setting.type === 'boolean' ? (
@@ -98,7 +142,7 @@ export default function SettingsPage() {
                     </label>
                   ) : setting.type === 'select' ? (
                     <select
-                      value={settings[setting.key] ?? 'percentage'}
+                      value={settings[setting.key] ?? setting.options?.[0]?.value ?? ''}
                       onChange={e => handleChange(setting.key, e.target.value)}
                       className="input"
                     >
@@ -106,13 +150,29 @@ export default function SettingsPage() {
                         <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
                       ))}
                     </select>
+                  ) : setting.type === 'readonly' ? (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={settings[setting.key] ?? ''}
+                        readOnly
+                        className="input bg-gray-50 text-gray-500"
+                      />
+                      <p className="text-xs text-gray-500">{t('settings.webhookUrlHelp')}</p>
+                    </div>
                   ) : (
-                    <input
-                      type={setting.type}
-                      value={settings[setting.key] ?? ''}
-                      onChange={e => handleChange(setting.key, e.target.value)}
-                      className="input"
-                    />
+                    <div className="space-y-2">
+                      <input
+                        type={setting.type}
+                        value={settings[setting.key] ?? ''}
+                        onChange={e => handleChange(setting.key, e.target.value)}
+                        className="input"
+                        placeholder={setting.configuredKey && settings[setting.configuredKey] ? t('settings.secretConfiguredPlaceholder') : undefined}
+                      />
+                      {setting.configuredKey && settings[setting.configuredKey] && (
+                        <p className="text-xs text-emerald-600">{t('settings.secretConfigured')}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

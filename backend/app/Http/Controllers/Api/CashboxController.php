@@ -14,6 +14,7 @@ use App\Services\CashboxService;
 use App\Support\TenantBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CashboxController extends Controller
@@ -51,22 +52,40 @@ class CashboxController extends Controller
             abort(403, 'Access denied.');
         }
 
-        if (Cashbox::where('branch_id', $request->branch_id)->exists()) {
-            throw ValidationException::withMessages([
-                'branch_id' => ['This branch already has a cashbox.'],
-            ]);
-        }
-
         $opening = (float) ($request->opening_balance ?? 0);
+        $branchId = (int) $request->branch_id;
 
-        $cashbox = Cashbox::create([
-            'tenant_id' => $tenantId,
-            'branch_id' => $request->branch_id,
-            'name' => $request->name,
-            'opening_balance' => $opening,
-            'current_balance' => $opening,
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        $cashbox = DB::transaction(function () use ($request, $tenantId, $opening, $branchId) {
+            $wantsPrimary = $request->has('is_primary')
+                ? (bool) $request->boolean('is_primary')
+                : null;
+
+            $hasAny = Cashbox::forTenant($tenantId)
+                ->where('branch_id', $branchId)
+                ->lockForUpdate()
+                ->exists();
+
+            $isPrimary = $wantsPrimary ?? (! $hasAny);
+
+            if ($isPrimary) {
+                Cashbox::forTenant($tenantId)
+                    ->where('branch_id', $branchId)
+                    ->where('is_primary', true)
+                    ->lockForUpdate()
+                    ->update(['is_primary' => false]);
+            }
+
+            return Cashbox::create([
+                'tenant_id' => $tenantId,
+                'branch_id' => $branchId,
+                'name' => $request->name,
+                'type' => $request->input('type'),
+                'opening_balance' => $opening,
+                'current_balance' => $opening,
+                'is_active' => $request->boolean('is_active', true),
+                'is_primary' => $isPrimary,
+            ]);
+        });
 
         return response()->json(['data' => new CashboxResource($cashbox->load('branch'))], 201);
     }
@@ -82,7 +101,24 @@ class CashboxController extends Controller
     {
         $this->authorizeCashbox($request, $cashbox);
 
-        $cashbox->update($request->validated());
+        $data = $request->validated();
+
+        if (array_key_exists('is_primary', $data) && (bool) $data['is_primary'] === true) {
+            DB::transaction(function () use ($cashbox, $data) {
+                $locked = Cashbox::whereKey($cashbox->id)->lockForUpdate()->firstOrFail();
+
+                Cashbox::forTenant((int) $locked->tenant_id)
+                    ->where('branch_id', (int) $locked->branch_id)
+                    ->where('id', '!=', (int) $locked->id)
+                    ->where('is_primary', true)
+                    ->lockForUpdate()
+                    ->update(['is_primary' => false]);
+
+                $locked->update($data);
+            });
+        } else {
+            $cashbox->update($data);
+        }
 
         return response()->json(['data' => new CashboxResource($cashbox->fresh()->load('branch'))]);
     }

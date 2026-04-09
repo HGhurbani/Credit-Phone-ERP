@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, Edit } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
@@ -20,6 +20,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [roles, setRoles] = useState([]);
   const [formModal, setFormModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
@@ -35,12 +36,12 @@ export default function UsersPage() {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await usersApi.list({ search: debouncedSearch, page, per_page: 15 });
+      const res = await usersApi.list({ search: debouncedSearch, page, per_page: getPerPageRequestValue(perPage) });
       setUsers(res.data.data);
       setMeta(res.data.meta);
     } catch { toast.error(t('common.error')); }
     finally { setLoading(false); }
-  }, [debouncedSearch, page, t]);
+  }, [debouncedSearch, page, perPage, t]);
 
   useEffect(() => { fetch(); }, [fetch]);
   useEffect(() => { usersApi.roles().then(r => setRoles(r.data.data)); }, []);
@@ -122,7 +123,12 @@ export default function UsersPage() {
       </div>
 
       <DataTable columns={columns} data={users} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
 
       {/* Form Modal */}
       <Modal open={formModal} onClose={() => setFormModal(false)} title={editUser ? t('users.edit') : t('users.add')} size="md"

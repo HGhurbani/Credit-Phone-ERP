@@ -15,6 +15,8 @@ class RolePermissionSeeder extends Seeder
         $permissions = [
             // Tenants (platform-level; typically super_admin only)
             'tenants.view', 'tenants.create', 'tenants.update', 'tenants.delete',
+            'plans.view', 'plans.create', 'plans.update', 'plans.delete',
+            'subscriptions.view', 'subscriptions.create', 'subscriptions.update', 'subscriptions.delete',
 
             // Dashboard
             'dashboard.view',
@@ -41,7 +43,7 @@ class RolePermissionSeeder extends Seeder
             'brands.view', 'brands.create', 'brands.update', 'brands.delete',
 
             // Orders
-            'orders.view', 'orders.create', 'orders.approve', 'orders.reject', 'orders.delete',
+            'orders.view', 'orders.create', 'orders.update', 'orders.approve', 'orders.reject', 'orders.delete',
 
             // Contracts
             'contracts.view', 'contracts.create', 'contracts.update',
@@ -54,9 +56,13 @@ class RolePermissionSeeder extends Seeder
 
             // Reports
             'reports.view', 'reports.export',
+            'journal_entries.view',
 
             // Settings
             'settings.view', 'settings.update',
+
+            // Assistant
+            'assistant.use', 'assistant.telegram.link', 'assistant.database.query',
 
             // Suppliers & purchasing
             'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
@@ -88,12 +94,14 @@ class RolePermissionSeeder extends Seeder
             'users.view', 'users.create', 'users.update', 'users.delete',
             'customers.view', 'customers.create', 'customers.update', 'customers.delete', 'customers.documents.upload',
             'products.view', 'products.create', 'products.update', 'products.delete', 'products.stock.adjust',
-            'orders.view', 'orders.create', 'orders.approve', 'orders.reject', 'orders.delete',
+            'orders.view', 'orders.create', 'orders.update', 'orders.approve', 'orders.reject', 'orders.delete',
             'contracts.view', 'contracts.create', 'contracts.update',
             'payments.view', 'payments.create', 'payments.collections',
             'invoices.view', 'invoices.record_payment', 'invoices.update',
             'reports.view', 'reports.export',
+            'journal_entries.view',
             'settings.view', 'settings.update',
+            'assistant.use', 'assistant.telegram.link', 'assistant.database.query',
             'dashboard.view',
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'brands.view', 'brands.create', 'brands.update', 'brands.delete',
@@ -115,17 +123,19 @@ class RolePermissionSeeder extends Seeder
             'customers.view', 'customers.create', 'customers.update', 'customers.documents.upload',
             'products.view', 'products.stock.adjust',
             'categories.view', 'brands.view',
-            'orders.view', 'orders.create', 'orders.approve', 'orders.reject',
+            'orders.view', 'orders.create', 'orders.update', 'orders.approve', 'orders.reject',
             'contracts.view', 'contracts.create',
             'payments.view', 'payments.create', 'payments.collections',
             'invoices.view', 'invoices.record_payment', 'invoices.update',
             'reports.view',
+            'journal_entries.view',
             'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
             'purchases.view', 'purchases.create', 'purchases.update', 'purchases.delete',
             'purchases.receive', 'purchases.update_status',
             'cashboxes.view', 'cashboxes.manage', 'cash_transactions.view',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete',
             'customer_statement.view', 'collections.followup.view', 'collections.followup.create',
+            'assistant.use', 'assistant.telegram.link',
         ]);
 
         // Sales Agent
@@ -135,7 +145,8 @@ class RolePermissionSeeder extends Seeder
             'customers.view', 'customers.create', 'customers.update', 'customers.documents.upload',
             'products.view',
             'categories.view', 'brands.view',
-            'orders.view', 'orders.create',
+            'orders.view', 'orders.create', 'orders.update',
+            'assistant.use', 'assistant.telegram.link',
         ]);
 
         // Collector
@@ -150,6 +161,7 @@ class RolePermissionSeeder extends Seeder
             'cashboxes.view',
             'customer_statement.view',
             'collections.followup.view', 'collections.followup.create',
+            'assistant.use', 'assistant.telegram.link', 'assistant.database.query',
         ]);
 
         // Accountant
@@ -162,12 +174,14 @@ class RolePermissionSeeder extends Seeder
             'payments.view', 'payments.collections',
             'invoices.view', 'invoices.record_payment', 'invoices.update',
             'reports.view', 'reports.export',
+            'journal_entries.view',
             'categories.view', 'brands.view',
             'suppliers.view',
             'purchases.view',
             'cashboxes.view', 'cash_transactions.view',
             'expenses.view',
             'customer_statement.view', 'collections.followup.view',
+            'assistant.use', 'assistant.telegram.link',
         ]);
     }
 }

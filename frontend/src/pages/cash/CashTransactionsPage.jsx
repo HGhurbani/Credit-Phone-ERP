@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import { Select } from '../../components/ui/FormField';
 import { cashTransactionsApi, branchesApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import toast from 'react-hot-toast';
+import { cashTxTypeLabelKey } from '../../i18n/cashLabels';
 export default function CashTransactionsPage() {
   const { t, isRTL } = useLang();
   const { user, hasRole, hasPermission } = useAuth();
@@ -16,6 +17,7 @@ export default function CashTransactionsPage() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
   const [direction, setDirection] = useState('');
   const [branchId, setBranchId] = useState('');
   const [branches, setBranches] = useState([]);
@@ -31,7 +33,7 @@ export default function CashTransactionsPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, per_page: 20 };
+      const params = { page, per_page: getPerPageRequestValue(perPage) };
       if (direction) params.direction = direction;
       if (branchId) params.branch_id = branchId;
       const res = await cashTransactionsApi.list(params);
@@ -42,7 +44,7 @@ export default function CashTransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, direction, branchId, t]);
+  }, [page, perPage, direction, branchId, t]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -50,7 +52,7 @@ export default function CashTransactionsPage() {
     { key: 'voucher', title: t('cash.voucher'), render: (r) => <span className="font-mono text-xs">{r.voucher_number || '—'}</span> },
     { key: 'd', title: t('common.date'), render: (r) => formatDate(r.transaction_date) },
     { key: 'b', title: t('common.branch'), render: (r) => r.branch?.name ?? '—' },
-    { key: 'type', title: t('cash.txType'), render: (r) => r.transaction_type },
+    { key: 'type', title: t('cash.txType'), render: (r) => t(cashTxTypeLabelKey(r.transaction_type)) },
     {
       key: 'amt',
       title: t('common.amount'),
@@ -100,7 +102,12 @@ export default function CashTransactionsPage() {
       </div>
 
       <DataTable columns={columns} data={rows} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
     </div>
   );
 }

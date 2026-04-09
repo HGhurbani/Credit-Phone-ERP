@@ -12,6 +12,8 @@ class CashboxResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'type' => $this->type,
+            'is_primary' => (bool) ($this->is_primary ?? false),
             'opening_balance' => (string) $this->opening_balance,
             'current_balance' => (string) $this->current_balance,
             'is_active' => $this->is_active,

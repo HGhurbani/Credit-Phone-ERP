@@ -2,12 +2,17 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\TenantSubscriptionService;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTenantAccess
 {
+    public function __construct(
+        private readonly TenantSubscriptionService $tenantSubscriptionService,
+    ) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
@@ -24,8 +29,10 @@ class EnsureTenantAccess
             return response()->json(['message' => 'No tenant associated with this account.'], 403);
         }
 
-        if (!$user->tenant || !$user->tenant->isActive()) {
-            return response()->json(['message' => 'Tenant account is inactive or suspended.'], 403);
+        $accessMessage = $this->tenantSubscriptionService->tenantAccessMessage($user);
+
+        if ($accessMessage) {
+            return response()->json(['message' => $accessMessage], 403);
         }
 
         if (!$user->is_active) {

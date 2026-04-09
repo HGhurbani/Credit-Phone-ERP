@@ -1,24 +1,29 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Plus } from 'lucide-react';
 import { FormField, Input, Select, Textarea } from '../../components/ui/FormField';
+import Modal from '../../components/ui/Modal';
 import { productsApi, settingsApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/format';
 import toast from 'react-hot-toast';
 import { INSTALLMENT_DURATION_PRESETS, INSTALLMENT_DURATION_MAX_MONTHS } from '../../constants/installmentDurations';
 
 export default function ProductFormPage() {
+  const { id } = useParams();
   const { t, isRTL } = useLang();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
+  const isEdit = Boolean(id);
 
   const [pricingMode, setPricingMode] = useState('percentage');
   const [form, setForm] = useState({
     name: '', name_ar: '', sku: '', description: '',
     category_id: '', brand_id: '',
     cash_price: '', installment_price: '', cost_price: '',
-    min_down_payment: '', allowed_durations: [3, 6, 12],
+    min_down_payment: '', allowed_durations: [4],
     monthly_percent_of_cash: '',
     fixed_monthly_amount: '',
     track_serial: false, is_active: true,
@@ -27,7 +32,15 @@ export default function ProductFormPage() {
   const [brands, setBrands] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(isEdit);
   const [durationDraft, setDurationDraft] = useState('');
+
+  // Optional quick-add (kept minimal to avoid clutter)
+  const [quickCatOpen, setQuickCatOpen] = useState(false);
+  const [quickBrandOpen, setQuickBrandOpen] = useState(false);
+  const [quickCatName, setQuickCatName] = useState('');
+  const [quickBrandName, setQuickBrandName] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
 
   useEffect(() => {
     productsApi.categories().then(r => setCategories(r.data.data));
@@ -40,6 +53,98 @@ export default function ProductFormPage() {
       }
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isEdit) {
+      setPageLoading(false);
+      return;
+    }
+    setPageLoading(true);
+    productsApi.get(id).then((res) => {
+      const p = res.data.data;
+      setForm((prev) => ({
+        ...prev,
+        name: p.name ?? '',
+        name_ar: p.name_ar ?? '',
+        sku: p.sku ?? '',
+        description: p.description ?? '',
+        category_id: p.category?.id ? String(p.category.id) : '',
+        brand_id: p.brand?.id ? String(p.brand.id) : '',
+        cash_price: p.cash_price ?? '',
+        installment_price: p.installment_price ?? '',
+        cost_price: p.cost_price ?? '',
+        min_down_payment: p.min_down_payment ?? '',
+        allowed_durations: Array.isArray(p.allowed_durations) && p.allowed_durations.length > 0 ? p.allowed_durations : [4],
+        monthly_percent_of_cash: p.monthly_percent_of_cash ?? '',
+        fixed_monthly_amount: p.fixed_monthly_amount ?? '',
+        track_serial: Boolean(p.track_serial),
+        is_active: p.is_active ?? true,
+      }));
+    }).catch(() => {
+      toast.error(t('common.error'));
+      navigate('/products');
+    }).finally(() => setPageLoading(false));
+  }, [id, isEdit, navigate, t]);
+
+  const refreshCategories = async () => {
+    const res = await productsApi.categories();
+    setCategories(res.data.data || []);
+    return res.data.data || [];
+  };
+
+  const refreshBrands = async () => {
+    const res = await productsApi.brands();
+    setBrands(res.data.data || []);
+    return res.data.data || [];
+  };
+
+  const handleQuickAddCategory = async (e) => {
+    e.preventDefault();
+    if (!quickCatName.trim()) {
+      toast.error(t('validation.required'));
+      return;
+    }
+    setQuickSaving(true);
+    try {
+      const res = await productsApi.createCategory({ name: quickCatName.trim() });
+      const created = res.data.data;
+      await refreshCategories();
+      setForm((p) => ({ ...p, category_id: String(created?.id ?? '') }));
+      toast.success(t('common.success'));
+      setQuickCatOpen(false);
+      setQuickCatName('');
+    } catch (err) {
+      const msg = err.response?.data?.message;
+      const errs = err.response?.data?.errors;
+      toast.error(msg || (errs && Object.values(errs).flat()[0]) || t('common.error'));
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const handleQuickAddBrand = async (e) => {
+    e.preventDefault();
+    if (!quickBrandName.trim()) {
+      toast.error(t('validation.required'));
+      return;
+    }
+    setQuickSaving(true);
+    try {
+      const res = await productsApi.createBrand({ name: quickBrandName.trim() });
+      const created = res.data.data;
+      await refreshBrands();
+      setForm((p) => ({ ...p, brand_id: String(created?.id ?? '') }));
+      toast.success(t('common.success'));
+      setQuickBrandOpen(false);
+      setQuickBrandName('');
+    } catch (err) {
+      const msg = err.response?.data?.message;
+      const errs = err.response?.data?.errors;
+      toast.error(msg || (errs && Object.values(errs).flat()[0]) || t('common.error'));
+    } finally {
+      setQuickSaving(false);
+    }
+  };
 
   const set = (field) => (e) => {
     const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -115,9 +220,13 @@ export default function ProductFormPage() {
         delete payload.monthly_percent_of_cash;
         delete payload.installment_price;
       }
-      await productsApi.create(payload);
+      if (isEdit) {
+        await productsApi.update(id, payload);
+      } else {
+        await productsApi.create(payload);
+      }
       toast.success(t('common.success'));
-      navigate('/products');
+      navigate(isEdit ? `/products/${id}` : '/products');
     } catch (err) {
       if (err.response?.data?.errors) setErrors(err.response.data.errors);
       else toast.error(t('common.error'));
@@ -126,12 +235,16 @@ export default function ProductFormPage() {
     }
   };
 
+  if (pageLoading) {
+    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
   return (
     <div className="w-full min-w-0">
       <div className="page-header mb-6">
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate(-1)} className="btn-ghost btn btn-sm"><BackIcon size={16} /></button>
-          <h1 className="page-title">{t('products.add')}</h1>
+          <h1 className="page-title">{isEdit ? t('products.edit') : t('products.add')}</h1>
         </div>
       </div>
 
@@ -155,18 +268,42 @@ export default function ProductFormPage() {
             <Input value={form.sku} onChange={set('sku')} />
           </FormField>
           <FormField label={t('products.category')}>
-            <Select value={form.category_id} onChange={set('category_id')}>
-              <option value="">{t('common.all')}</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={form.category_id} onChange={set('category_id')}>
+                <option value="">{t('common.all')}</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              {hasPermission('categories.create') && (
+                <button
+                  type="button"
+                  onClick={() => setQuickCatOpen(true)}
+                  className="btn-ghost btn btn-sm"
+                  title={t('categories.add')}
+                >
+                  <Plus size={14} />
+                </button>
+              )}
+            </div>
           </FormField>
         </div>
 
         <FormField label={t('products.brand')}>
-          <Select value={form.brand_id} onChange={set('brand_id')}>
-            <option value="">{t('common.all')}</option>
-            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={form.brand_id} onChange={set('brand_id')}>
+              <option value="">{t('common.all')}</option>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+            {hasPermission('brands.create') && (
+              <button
+                type="button"
+                onClick={() => setQuickBrandOpen(true)}
+                className="btn-ghost btn btn-sm"
+                title={t('brands.add')}
+              >
+                <Plus size={14} />
+              </button>
+            )}
+          </div>
         </FormField>
 
         <div className="grid grid-cols-2 gap-4">
@@ -315,6 +452,47 @@ export default function ProductFormPage() {
           </button>
         </div>
       </form>
+
+      {/* Quick add modals (kept intentionally small) */}
+      <Modal
+        open={quickCatOpen}
+        onClose={() => setQuickCatOpen(false)}
+        title={t('categories.add')}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" onClick={() => setQuickCatOpen(false)} className="btn-secondary btn">{t('common.cancel')}</button>
+            <button type="submit" form="quick-category-form" disabled={quickSaving} className="btn-primary btn">{quickSaving ? '…' : t('common.save')}</button>
+          </>
+        )}
+      >
+        <form id="quick-category-form" onSubmit={handleQuickAddCategory} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.name')} *</label>
+            <Input value={quickCatName} onChange={(e) => setQuickCatName(e.target.value)} />
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={quickBrandOpen}
+        onClose={() => setQuickBrandOpen(false)}
+        title={t('brands.add')}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" onClick={() => setQuickBrandOpen(false)} className="btn-secondary btn">{t('common.cancel')}</button>
+            <button type="submit" form="quick-brand-form" disabled={quickSaving} className="btn-primary btn">{quickSaving ? '…' : t('common.save')}</button>
+          </>
+        )}
+      >
+        <form id="quick-brand-form" onSubmit={handleQuickAddBrand} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.name')} *</label>
+            <Input value={quickBrandName} onChange={(e) => setQuickBrandName(e.target.value)} />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

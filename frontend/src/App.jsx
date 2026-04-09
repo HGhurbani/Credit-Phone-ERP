@@ -12,6 +12,8 @@ import ProductsPage from './pages/products/ProductsPage';
 import ProductFormPage from './pages/products/ProductFormPage';
 import ProductDetailPage from './pages/products/ProductDetailPage';
 import SuppliersPage from './pages/suppliers/SuppliersPage';
+import CategoriesPage from './pages/categories/CategoriesPage';
+import BrandsPage from './pages/brands/BrandsPage';
 import PurchasesPage from './pages/purchases/PurchasesPage';
 import PurchaseFormPage from './pages/purchases/PurchaseFormPage';
 import PurchaseDetailPage from './pages/purchases/PurchaseDetailPage';
@@ -24,11 +26,13 @@ import CollectionsPage from './pages/collections/CollectionsPage';
 import InvoicesPage from './pages/invoices/InvoicesPage';
 import InvoiceDetailPage from './pages/invoices/InvoiceDetailPage';
 import ReportsPage from './pages/reports/ReportsPage';
+import AssistantPage from './pages/assistant/AssistantPage';
 import UsersPage from './pages/users/UsersPage';
 import BranchesPage from './pages/branches/BranchesPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import CashboxPage from './pages/cash/CashboxPage';
 import CashTransactionsPage from './pages/cash/CashTransactionsPage';
+import JournalEntriesPage from './pages/accounting/JournalEntriesPage';
 import VoucherPrintPage from './pages/cash/VoucherPrintPage';
 import ExpensesPage from './pages/expenses/ExpensesPage';
 import ContractPrintPage from './pages/print/ContractPrintPage';
@@ -36,6 +40,7 @@ import InvoicePrintPage from './pages/print/InvoicePrintPage';
 import PaymentReceiptPrintPage from './pages/print/PaymentReceiptPrintPage';
 import StatementPrintPage from './pages/print/StatementPrintPage';
 import PurchaseOrderPrintPage from './pages/print/PurchaseOrderPrintPage';
+import PlatformPage from './pages/platform/PlatformPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -66,18 +71,25 @@ function AppRoutes() {
       <Route path="/cash/voucher/:id" element={<PrivateRoute><VoucherPrintPage /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<DashboardPage />} />
+        <Route path="platform" element={<Navigate to="/platform/overview" replace />} />
+        <Route path="platform/:section" element={<PlatformPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="customers/new" element={<CustomerFormPage />} />
+        <Route path="customers/:id/edit" element={<CustomerFormPage />} />
         <Route path="customers/:id" element={<CustomerDetailPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<ProductFormPage />} />
+        <Route path="products/:id/edit" element={<ProductFormPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
+        <Route path="categories" element={<CategoriesPage />} />
+        <Route path="brands" element={<BrandsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="purchases/new" element={<PurchaseFormPage />} />
         <Route path="purchases/:id/edit" element={<PurchaseFormPage />} />
         <Route path="purchases/:id" element={<PurchaseDetailPage />} />
         <Route path="purchases" element={<PurchasesPage />} />
         <Route path="cash/transactions" element={<CashTransactionsPage />} />
+        <Route path="accounting/journal-entries" element={<JournalEntriesPage />} />
         <Route path="cash" element={<CashboxPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
         <Route path="orders" element={<OrdersPage />} />
@@ -89,6 +101,7 @@ function AppRoutes() {
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="assistant" element={<AssistantPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="branches" element={<BranchesPage />} />
         <Route path="settings" element={<SettingsPage />} />

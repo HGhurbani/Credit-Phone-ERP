@@ -1,12 +1,36 @@
 import axios from 'axios';
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+
+function getCsrfCookieUrl() {
+  if (typeof window === 'undefined') {
+    return '/sanctum/csrf-cookie';
+  }
+
+  try {
+    const apiUrl = new URL(apiBaseUrl, window.location.origin);
+    return new URL('/sanctum/csrf-cookie', apiUrl.origin).toString();
+  } catch {
+    return '/sanctum/csrf-cookie';
+  }
+}
+
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
+  withCredentials: true,
+  withXSRFToken: true,
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
 });
+
+export async function ensureCsrfCookie() {
+  // Sanctum expects this before stateful (cookie) auth requests.
+  await axios.get(getCsrfCookieUrl(), { withCredentials: true });
+}
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -55,6 +79,20 @@ export const productsApi = {
   createCategory: (data) => api.post('/categories', data),
   brands: () => api.get('/brands'),
   createBrand: (data) => api.post('/brands', data),
+};
+
+export const categoriesApi = {
+  list: (params) => api.get('/categories', { params }),
+  create: (data) => api.post('/categories', data),
+  update: (id, data) => api.put(`/categories/${id}`, data),
+  delete: (id) => api.delete(`/categories/${id}`),
+};
+
+export const brandsApi = {
+  list: (params) => api.get('/brands', { params }),
+  create: (data) => api.post('/brands', data),
+  update: (id, data) => api.put(`/brands/${id}`, data),
+  delete: (id) => api.delete(`/brands/${id}`),
 };
 
 export const ordersApi = {
@@ -136,6 +174,28 @@ export const dashboardApi = {
   get: () => api.get('/dashboard'),
 };
 
+export const platformTenantsApi = {
+  list: (params) => api.get('/platform/tenants', { params }),
+  create: (data) => api.post('/platform/tenants', data),
+  update: (id, data) => api.put(`/platform/tenants/${id}`, data),
+  delete: (id) => api.delete(`/platform/tenants/${id}`),
+  impersonate: (id) => api.post(`/platform/tenants/${id}/impersonate`),
+};
+
+export const platformPlansApi = {
+  list: (params) => api.get('/platform/plans', { params }),
+  create: (data) => api.post('/platform/plans', data),
+  update: (id, data) => api.put(`/platform/plans/${id}`, data),
+  delete: (id) => api.delete(`/platform/plans/${id}`),
+};
+
+export const platformSubscriptionsApi = {
+  list: (params) => api.get('/platform/subscriptions', { params }),
+  create: (data) => api.post('/platform/subscriptions', data),
+  update: (id, data) => api.put(`/platform/subscriptions/${id}`, data),
+  delete: (id) => api.delete(`/platform/subscriptions/${id}`),
+};
+
 export const cashboxesApi = {
   list: (params) => api.get('/cashboxes', { params }),
   get: (id) => api.get(`/cashboxes/${id}`),
@@ -151,6 +211,11 @@ export const cashTransactionsApi = {
   get: (id) => api.get(`/cash-transactions/${id}`),
 };
 
+export const journalEntriesApi = {
+  list: (params) => api.get('/journal-entries', { params }),
+  get: (id) => api.get(`/journal-entries/${id}`),
+};
+
 export const expensesApi = {
   list: (params) => api.get('/expenses', { params }),
   get: (id) => api.get(`/expenses/${id}`),
@@ -163,4 +228,13 @@ export const expensesApi = {
 export const settingsApi = {
   get: () => api.get('/settings'),
   update: (settings) => api.put('/settings', { settings }),
+};
+
+export const assistantApi = {
+  threads: () => api.get('/assistant/threads'),
+  thread: (id) => api.get(`/assistant/threads/${id}`),
+  sendMessage: (data) => api.post('/assistant/messages', data),
+  confirmDelete: (id) => api.post(`/assistant/messages/${id}/confirm-delete`),
+  generateLinkCode: () => api.post('/assistant/telegram/link-code'),
+  unlinkTelegram: () => api.delete('/assistant/telegram/link'),
 };

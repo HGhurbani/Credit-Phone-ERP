@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CashboxController;
 use App\Http\Controllers\Api\CashTransactionController;
@@ -12,14 +13,20 @@ use App\Http\Controllers\Api\CustomerCollectionController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PlatformImpersonationController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PlatformSubscriptionController;
+use App\Http\Controllers\Api\PlatformSubscriptionPlanController;
+use App\Http\Controllers\Api\PlatformTenantController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +38,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
+
+Route::post('/webhooks/telegram/{tenant}/{secret}', TelegramWebhookController::class);
 
 /*
 |--------------------------------------------------------------------------
@@ -181,6 +190,18 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
     Route::middleware('permission:settings.view')->get('/settings', [SettingController::class, 'index']);
     Route::middleware('permission:settings.update')->put('/settings', [SettingController::class, 'update']);
 
+    Route::middleware('permission:assistant.use')->group(function () {
+        Route::get('/assistant/threads', [AssistantController::class, 'threads']);
+        Route::get('/assistant/threads/{id}', [AssistantController::class, 'showThread']);
+        Route::post('/assistant/messages', [AssistantController::class, 'storeMessage']);
+        Route::post('/assistant/messages/{id}/confirm-delete', [AssistantController::class, 'confirmDelete']);
+    });
+
+    Route::middleware('permission:assistant.telegram.link')->group(function () {
+        Route::post('/assistant/telegram/link-code', [AssistantController::class, 'generateLinkCode']);
+        Route::delete('/assistant/telegram/link', [AssistantController::class, 'unlinkTelegram']);
+    });
+
     // Roles (assignable list for user forms)
     Route::middleware('permission:roles.view')->get('/roles', [RoleController::class, 'index']);
 
@@ -202,6 +223,11 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
         Route::get('/cash-transactions/{cashTransaction}', [CashTransactionController::class, 'show']);
     });
 
+    Route::middleware('permission:journal_entries.view')->group(function () {
+        Route::get('/journal-entries', [JournalEntryController::class, 'index']);
+        Route::get('/journal-entries/{journalEntry}', [JournalEntryController::class, 'show']);
+    });
+
     // Expenses
     Route::middleware('permission:expenses.view')->group(function () {
         Route::get('/expenses', [ExpenseController::class, 'index']);
@@ -213,4 +239,23 @@ Route::middleware(['auth:sanctum', 'tenant.access'])->group(function () {
         Route::post('/expenses/{expense}/cancel', [ExpenseController::class, 'cancel']);
     });
     Route::middleware('permission:expenses.delete')->delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
+
+    // Platform management (super admin only; enforced inside controllers)
+    Route::prefix('platform')->group(function () {
+        Route::get('/tenants', [PlatformTenantController::class, 'index']);
+        Route::post('/tenants', [PlatformTenantController::class, 'store']);
+        Route::post('/tenants/{tenant}/impersonate', [PlatformImpersonationController::class, 'store']);
+        Route::match(['put', 'patch'], '/tenants/{tenant}', [PlatformTenantController::class, 'update']);
+        Route::delete('/tenants/{tenant}', [PlatformTenantController::class, 'destroy']);
+
+        Route::get('/plans', [PlatformSubscriptionPlanController::class, 'index']);
+        Route::post('/plans', [PlatformSubscriptionPlanController::class, 'store']);
+        Route::match(['put', 'patch'], '/plans/{plan}', [PlatformSubscriptionPlanController::class, 'update']);
+        Route::delete('/plans/{plan}', [PlatformSubscriptionPlanController::class, 'destroy']);
+
+        Route::get('/subscriptions', [PlatformSubscriptionController::class, 'index']);
+        Route::post('/subscriptions', [PlatformSubscriptionController::class, 'store']);
+        Route::match(['put', 'patch'], '/subscriptions/{subscription}', [PlatformSubscriptionController::class, 'update']);
+        Route::delete('/subscriptions/{subscription}', [PlatformSubscriptionController::class, 'destroy']);
+    });
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Ban } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import { Input, Select, Textarea } from '../../components/ui/FormField';
 import { expensesApi, cashboxesApi, branchesApi } from '../../api/client';
@@ -17,6 +17,7 @@ export default function ExpensesPage() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
   const [category, setCategory] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -49,7 +50,7 @@ export default function ExpensesPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, per_page: 20 };
+      const params = { page, per_page: getPerPageRequestValue(perPage) };
       if (category) params.category = category;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
@@ -61,7 +62,7 @@ export default function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, category, dateFrom, dateTo, t]);
+  }, [page, perPage, category, dateFrom, dateTo, t]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -177,7 +178,12 @@ export default function ExpensesPage() {
       </div>
 
       <DataTable columns={columns} data={rows} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
 
       <Modal
         open={modalOpen}

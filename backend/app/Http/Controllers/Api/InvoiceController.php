@@ -56,7 +56,7 @@ class InvoiceController extends Controller
 
         $this->authorizeBranchInvoice($request, $invoice);
 
-        $invoice->load(['customer', 'branch', 'order.items.product', 'contract', 'items', 'payments']);
+        $invoice->load(['customer', 'branch', 'order.items.product', 'contract', 'items', 'payments.collectedBy', 'payments.receipt']);
 
         return response()->json(['data' => new InvoiceResource($invoice)]);
     }
@@ -82,7 +82,7 @@ class InvoiceController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $invoice->load(['customer', 'branch', 'order', 'items', 'payments']);
+        $invoice->load(['customer', 'branch', 'order', 'items', 'payments.collectedBy', 'payments.receipt']);
 
         return response()->json([
             'data' => new InvoiceResource($invoice),
@@ -109,7 +109,7 @@ class InvoiceController extends Controller
             }
         }
 
-        $invoice->load(['customer', 'branch', 'order', 'items', 'payments']);
+        $invoice->load(['customer', 'branch', 'order', 'items', 'payments.collectedBy', 'payments.receipt']);
 
         return response()->json(['data' => new InvoiceResource($invoice)]);
     }

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, PackageCheck, Ban, Send, Pencil, Trash2, Printer } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
+import { Pagination, useLocalPagination } from '../../components/ui/Table';
 import { purchaseOrdersApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { useAuth } from '../../context/AuthContext';
@@ -109,6 +110,8 @@ export default function PurchaseDetailPage() {
     }
   };
 
+  const linesPagination = useLocalPagination(po?.items || []);
+
   if (loading || !po) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center text-gray-500">{t('common.loading')}</div>
@@ -190,29 +193,40 @@ export default function PurchaseDetailPage() {
         <div className="px-4 py-3 border-b bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-900">{t('purchases.lines')}</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-start text-gray-500 border-b">
-                <th className="px-4 py-2">{t('products.name')}</th>
-                <th className="px-4 py-2">{t('products.quantity')}</th>
-                <th className="px-4 py-2">{t('purchases.received')}</th>
-                <th className="px-4 py-2">{t('purchases.unitCost')}</th>
-                <th className="px-4 py-2">{t('common.total')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(po.items || []).map((line) => (
-                <tr key={line.id} className="border-b last:border-0">
-                  <td className="px-4 py-2">{line.product?.name || '—'}</td>
-                  <td className="px-4 py-2">{line.quantity}</td>
-                  <td className="px-4 py-2">{line.quantity_received ?? 0}</td>
-                  <td className="px-4 py-2">{formatCurrency(line.unit_cost)}</td>
-                  <td className="px-4 py-2 font-medium">{formatCurrency(line.total)}</td>
+        <div className="p-4">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-start text-gray-500 border-b">
+                  <th className="px-4 py-2">{t('products.name')}</th>
+                  <th className="px-4 py-2">{t('products.quantity')}</th>
+                  <th className="px-4 py-2">{t('purchases.received')}</th>
+                  <th className="px-4 py-2">{t('purchases.unitCost')}</th>
+                  <th className="px-4 py-2">{t('common.total')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {linesPagination.rows.map((line) => (
+                  <tr key={line.id} className="border-b last:border-0">
+                    <td className="px-4 py-2">{line.product?.name || '—'}</td>
+                    <td className="px-4 py-2">{line.quantity}</td>
+                    <td className="px-4 py-2">{line.quantity_received ?? 0}</td>
+                    <td className="px-4 py-2">{formatCurrency(line.unit_cost)}</td>
+                    <td className="px-4 py-2 font-medium">{formatCurrency(line.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            total={linesPagination.total}
+            currentPage={linesPagination.page}
+            lastPage={linesPagination.lastPage}
+            perPage={linesPagination.perPage}
+            pageSize={linesPagination.pageSize}
+            onPageChange={linesPagination.setPage}
+            onPageSizeChange={(value) => { linesPagination.setPageSize(value); linesPagination.setPage(1); }}
+          />
         </div>
       </div>
 

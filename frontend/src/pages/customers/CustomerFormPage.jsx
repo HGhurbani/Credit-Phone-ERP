@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import { FormField, Input, Select, Textarea } from '../../components/ui/FormField';
 import { customersApi } from '../../api/client';
@@ -7,9 +7,11 @@ import { useLang } from '../../context/LangContext';
 import toast from 'react-hot-toast';
 
 export default function CustomerFormPage() {
+  const { id } = useParams();
   const { t, isRTL } = useLang();
   const navigate = useNavigate();
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
+  const isEdit = Boolean(id);
 
   const [form, setForm] = useState({
     name: '', phone: '', email: '', national_id: '', id_type: 'national',
@@ -17,6 +19,34 @@ export default function CustomerFormPage() {
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(isEdit);
+
+  useEffect(() => {
+    if (!isEdit) {
+      setPageLoading(false);
+      return;
+    }
+    setPageLoading(true);
+    customersApi.get(id).then((res) => {
+      const c = res.data.data;
+      setForm({
+        name: c.name ?? '',
+        phone: c.phone ?? '',
+        email: c.email ?? '',
+        national_id: c.national_id ?? '',
+        id_type: c.id_type ?? 'national',
+        address: c.address ?? '',
+        city: c.city ?? '',
+        employer_name: c.employer_name ?? '',
+        monthly_salary: c.monthly_salary ?? '',
+        credit_score: c.credit_score ?? 'good',
+        notes: c.notes ?? '',
+      });
+    }).catch(() => {
+      toast.error(t('common.error'));
+      navigate('/customers');
+    }).finally(() => setPageLoading(false));
+  }, [id, isEdit, navigate, t]);
 
   const set = (field) => (e) => setForm(p => ({ ...p, [field]: e.target.value }));
 
@@ -34,9 +64,13 @@ export default function CustomerFormPage() {
 
     setLoading(true);
     try {
-      await customersApi.create(form);
+      if (isEdit) {
+        await customersApi.update(id, form);
+      } else {
+        await customersApi.create(form);
+      }
       toast.success(t('common.success'));
-      navigate('/customers');
+      navigate(isEdit ? `/customers/${id}` : '/customers');
     } catch (err) {
       if (err.response?.data?.errors) {
         setErrors(err.response.data.errors);
@@ -48,6 +82,10 @@ export default function CustomerFormPage() {
     }
   };
 
+  if (pageLoading) {
+    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
   return (
     <div className="w-full min-w-0">
       <div className="page-header mb-6">
@@ -55,7 +93,7 @@ export default function CustomerFormPage() {
           <button onClick={() => navigate(-1)} className="btn-ghost btn btn-sm">
             <BackIcon size={16} />
           </button>
-          <h1 className="page-title">{t('customers.add')}</h1>
+          <h1 className="page-title">{isEdit ? t('customers.edit') : t('customers.add')}</h1>
         </div>
       </div>
 

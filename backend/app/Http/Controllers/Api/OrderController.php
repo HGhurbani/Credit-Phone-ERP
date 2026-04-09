@@ -89,7 +89,7 @@ class OrderController extends Controller
         ]);
 
         if ($orderForApi->isCash()) {
-            $invoice = $this->invoiceService->createFromOrder($orderForApi);
+            $invoice = $this->invoiceService->createFromOrder($orderForApi, $request->user()->id);
             return response()->json(['data' => new OrderResource($orderForApi), 'invoice' => $invoice]);
         }
 

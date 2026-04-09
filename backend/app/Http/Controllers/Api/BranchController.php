@@ -7,11 +7,16 @@ use App\Http\Requests\Branch\StoreBranchRequest;
 use App\Http\Requests\Branch\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
+use App\Services\TenantSubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BranchController extends Controller
 {
+    public function __construct(
+        private readonly TenantSubscriptionService $tenantSubscriptionService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -26,6 +31,8 @@ class BranchController extends Controller
 
     public function store(StoreBranchRequest $request): JsonResponse
     {
+        $this->tenantSubscriptionService->assertCanCreateBranch((int) $request->user()->tenant_id);
+
         $branch = Branch::create([
             ...$request->validated(),
             'tenant_id' => $request->user()->tenant_id,

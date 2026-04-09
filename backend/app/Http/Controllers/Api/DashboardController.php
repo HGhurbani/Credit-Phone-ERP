@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\InstallmentContract;
 use App\Models\InstallmentSchedule;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Subscription;
+use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +21,11 @@ class DashboardController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        if ($user->isSuperAdmin()) {
+            return $this->platformOverview();
+        }
+
         $tenantId = $user->tenant_id;
         $branchId = $user->branch_id;
 
@@ -121,6 +130,71 @@ class DashboardController extends Controller
             'latest_payments' => $latestPayments,
             'urgent_alerts' => $urgentAlerts,
             'top_products' => $topProducts,
+        ]);
+    }
+
+    private function platformOverview(): JsonResponse
+    {
+        $now = now();
+        $activeSubscriptions = Subscription::query()
+            ->with('plan')
+            ->where('status', 'active')
+            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>=', $now))
+            ->get();
+
+        $monthlyRecurringRevenue = $activeSubscriptions->sum(function (Subscription $subscription) {
+            $plan = $subscription->plan;
+
+            if (!$plan) {
+                return 0;
+            }
+
+            return match ($plan->interval) {
+                'monthly' => (float) $plan->price,
+                'yearly' => (float) $plan->price / 12,
+                default => 0,
+            };
+        });
+
+        $expiringSoon = Subscription::query()
+            ->with(['tenant', 'plan'])
+            ->whereNotNull('ends_at')
+            ->where('ends_at', '>=', $now)
+            ->where('ends_at', '<=', $now->copy()->addDays(30))
+            ->orderBy('ends_at')
+            ->limit(10)
+            ->get();
+
+        $recentTenants = Tenant::query()
+            ->withCount(['branches', 'users', 'subscriptions'])
+            ->with(['latestSubscription.plan'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'stats' => [
+                'total_tenants' => Tenant::count(),
+                'active_tenants' => Tenant::where('status', 'active')->count(),
+                'trial_tenants' => Tenant::where('status', 'trial')->count(),
+                'suspended_tenants' => Tenant::where('status', 'suspended')->count(),
+                'total_subscriptions' => Subscription::count(),
+                'active_subscriptions' => $activeSubscriptions->count(),
+                'expiring_subscriptions' => $expiringSoon->count(),
+                'total_users' => User::where('is_super_admin', false)->count(),
+                'total_branches' => Branch::count(),
+                'monthly_recurring_revenue' => round($monthlyRecurringRevenue, 2),
+            ],
+            'tenant_status_breakdown' => Tenant::query()
+                ->select('status', DB::raw('count(*) as total'))
+                ->groupBy('status')
+                ->pluck('total', 'status'),
+            'subscription_status_breakdown' => Subscription::query()
+                ->select('status', DB::raw('count(*) as total'))
+                ->groupBy('status')
+                ->pluck('total', 'status'),
+            'recent_tenants' => $recentTenants,
+            'expiring_subscriptions' => $expiringSoon,
         ]);
     }
 }

@@ -43,6 +43,12 @@ class OrderResource extends JsonResource
                 if ($item->relationLoaded('product') && $item->product) {
                     $row['product'] = [
                         'cash_price' => (float) $item->product->cash_price,
+                        'installment_price' => $item->product->installment_price !== null
+                            ? (float) $item->product->installment_price
+                            : null,
+                        'min_down_payment' => $item->product->min_down_payment !== null
+                            ? (float) $item->product->min_down_payment
+                            : 0.0,
                         'monthly_percent_of_cash' => $item->product->monthly_percent_of_cash !== null
                             ? (float) $item->product->monthly_percent_of_cash
                             : null,

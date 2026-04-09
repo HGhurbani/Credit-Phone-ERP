@@ -7,12 +7,17 @@ use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\TenantSubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly TenantSubscriptionService $tenantSubscriptionService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -37,6 +42,8 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request): JsonResponse
     {
+        $this->tenantSubscriptionService->assertCanCreateUser((int) $request->user()->tenant_id);
+
         $user = User::create([
             ...$request->validated(),
             'tenant_id' => $request->user()->tenant_id,

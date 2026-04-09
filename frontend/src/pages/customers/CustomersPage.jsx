@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Eye, Trash2 } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { Plus, Eye, Trash2, Pencil } from 'lucide-react';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge from '../../components/ui/Badge';
 import { ConfirmModal } from '../../components/ui/Modal';
 import { customersApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -14,12 +15,14 @@ const creditScoreVariant = { excellent: 'green', good: 'blue', fair: 'yellow', p
 
 export default function CustomersPage() {
   const { t } = useLang();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [customers, setCustomers] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -28,7 +31,7 @@ export default function CustomersPage() {
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await customersApi.list({ search: debouncedSearch, page, per_page: 15 });
+      const res = await customersApi.list({ search: debouncedSearch, page, per_page: getPerPageRequestValue(perPage) });
       setCustomers(res.data.data);
       setMeta(res.data.meta);
     } catch {
@@ -36,7 +39,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, page, t]);
+  }, [debouncedSearch, page, perPage, t]);
 
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
@@ -54,6 +57,8 @@ export default function CustomersPage() {
       setDeleting(false);
     }
   };
+
+  const canUpdate = hasPermission('customers.update');
 
   const columns = [
     { key: 'name', title: t('customers.name') },
@@ -91,6 +96,14 @@ export default function CustomersPage() {
           >
             <Eye size={14} />
           </button>
+          {canUpdate && (
+            <button
+              onClick={() => navigate(`/customers/${row.id}/edit`)}
+              className="btn-ghost btn btn-sm"
+            >
+              <Pencil size={14} />
+            </button>
+          )}
           <button
             onClick={() => setDeleteTarget(row)}
             className="btn-ghost btn btn-sm text-red-500 hover:bg-red-50"
@@ -126,7 +139,12 @@ export default function CustomersPage() {
 
       <div>
         <DataTable columns={columns} data={customers} loading={loading} />
-        <Pagination meta={meta} onPageChange={setPage} />
+        <Pagination
+          meta={meta}
+          onPageChange={setPage}
+          pageSize={perPage}
+          onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+        />
       </div>
 
       <ConfirmModal

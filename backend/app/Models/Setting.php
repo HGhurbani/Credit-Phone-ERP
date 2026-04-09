@@ -19,6 +19,7 @@ class Setting extends Model
             'boolean' => (bool) $value,
             'integer' => (int) $value,
             'json' => json_decode($value, true),
+            'encrypted' => $value,
             default => $value,
         };
     }

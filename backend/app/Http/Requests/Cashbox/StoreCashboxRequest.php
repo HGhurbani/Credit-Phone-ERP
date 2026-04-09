@@ -22,6 +22,8 @@ class StoreCashboxRequest extends FormRequest
                 Rule::exists('branches', 'id')->where(fn ($q) => $q->where('tenant_id', $tenantId)),
             ],
             'name' => 'required|string|max:255',
+            'type' => 'nullable|string|max:64',
+            'is_primary' => 'sometimes|boolean',
             'opening_balance' => 'nullable|numeric',
             'is_active' => 'boolean',
         ];

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import Badge, { invoiceStatusBadge } from '../../components/ui/Badge';
 import { invoicesApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
@@ -26,6 +26,7 @@ export default function InvoicesPage() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -33,13 +34,13 @@ export default function InvoicesPage() {
       const res = await invoicesApi.list({
         ...(statusFilter ? { status: statusFilter } : {}),
         page,
-        per_page: 15,
+        per_page: getPerPageRequestValue(perPage),
       });
       setInvoices(res.data.data);
       setMeta(res.data.meta);
     } catch { toast.error(t('common.error')); }
     finally { setLoading(false); }
-  }, [statusFilter, page, t]);
+  }, [statusFilter, page, perPage, t]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -72,7 +73,12 @@ export default function InvoicesPage() {
         </select>
       </div>
       <DataTable columns={columns} data={invoices} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
     </div>
   );
 }

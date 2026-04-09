@@ -3,6 +3,7 @@
 namespace Tests\Feature\Contracts;
 
 use App\Models\InstallmentContract;
+use App\Models\InstallmentSchedule;
 use App\Models\Order;
 use App\Models\StockMovement;
 use App\Models\User;
@@ -101,5 +102,107 @@ class ContractCreationTest extends TestCase
         $this->assertDatabaseMissing('installment_contracts', ['order_id' => $ctx['order']->id]);
         $this->assertSame(0, StockMovement::count());
         $this->assertSame('approved', Order::find($ctx['order']->id)->status);
+    }
+
+    public function test_contract_conversion_enforces_minimum_down_payment_and_rounds_monthly_up(): void
+    {
+        $ctx = $this->createApprovedInstallmentOrderWithInventory();
+        $ctx['product']->update([
+            'installment_price' => 1000,
+            'min_down_payment' => 100,
+        ]);
+
+        $admin = User::factory()->forTenant($ctx['tenant']->id)->create();
+        $admin->assignRole('company_admin');
+        Sanctum::actingAs($admin);
+
+        $payload = [
+            'order_id' => $ctx['order']->id,
+            'down_payment' => 100,
+            'duration_months' => 7,
+            'start_date' => now()->toDateString(),
+            'first_due_date' => now()->addMonth()->toDateString(),
+        ];
+
+        $response = $this->postJson('/api/contracts', $payload);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.down_payment', '100.00')
+            ->assertJsonPath('data.financed_amount', '900.00')
+            ->assertJsonPath('data.monthly_amount', '129.00');
+
+        $contract = InstallmentContract::query()->where('order_id', $ctx['order']->id)->firstOrFail();
+        $schedules = InstallmentSchedule::query()
+            ->where('contract_id', $contract->id)
+            ->orderBy('installment_number')
+            ->get();
+
+        $this->assertCount(7, $schedules);
+        $this->assertSame(129.0, (float) $schedules[0]->amount);
+        $this->assertSame(126.0, (float) $schedules[6]->amount);
+        $this->assertEqualsWithDelta(900.0, (float) $schedules->sum('amount'), 0.01);
+    }
+
+    public function test_contract_conversion_rejects_down_payment_below_minimum(): void
+    {
+        $ctx = $this->createApprovedInstallmentOrderWithInventory();
+        $ctx['product']->update([
+            'installment_price' => 1000,
+            'min_down_payment' => 100,
+        ]);
+
+        $admin = User::factory()->forTenant($ctx['tenant']->id)->create();
+        $admin->assignRole('company_admin');
+        Sanctum::actingAs($admin);
+
+        $payload = [
+            'order_id' => $ctx['order']->id,
+            'down_payment' => 99,
+            'duration_months' => 7,
+            'start_date' => now()->toDateString(),
+            'first_due_date' => now()->addMonth()->toDateString(),
+        ];
+
+        $this->postJson('/api/contracts', $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['down_payment']);
+    }
+
+    public function test_contract_conversion_accepts_manual_monthly_amount_and_adjusts_last_installment(): void
+    {
+        $ctx = $this->createApprovedInstallmentOrderWithInventory();
+        $ctx['product']->update([
+            'installment_price' => 1000,
+            'min_down_payment' => 100,
+        ]);
+
+        $admin = User::factory()->forTenant($ctx['tenant']->id)->create();
+        $admin->assignRole('company_admin');
+        Sanctum::actingAs($admin);
+
+        $payload = [
+            'order_id' => $ctx['order']->id,
+            'down_payment' => 100,
+            'monthly_amount' => 120,
+            'duration_months' => 7,
+            'start_date' => now()->toDateString(),
+            'first_due_date' => now()->addMonth()->toDateString(),
+        ];
+
+        $response = $this->postJson('/api/contracts', $payload);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.monthly_amount', '120.00');
+
+        $contract = InstallmentContract::query()->where('order_id', $ctx['order']->id)->firstOrFail();
+        $schedules = InstallmentSchedule::query()
+            ->where('contract_id', $contract->id)
+            ->orderBy('installment_number')
+            ->get();
+
+        $this->assertCount(7, $schedules);
+        $this->assertSame(120.0, (float) $schedules[0]->amount);
+        $this->assertSame(180.0, (float) $schedules[6]->amount);
+        $this->assertEqualsWithDelta(900.0, (float) $schedules->sum('amount'), 0.01);
     }
 }

@@ -34,12 +34,23 @@ export function formatReportCellValue(val) {
 export function isReportCurrencyKey(key) {
   if (!key || typeof key !== 'string') return false;
   if (key === 'total_orders' || key === 'total_payments' || key === 'installment_number' || key === 'duration_months') return false;
+  if ([
+    'avg_order_value',
+    'avg_payment_value',
+    'portfolio_value',
+    'avg_paid_per_contract',
+    'outstanding_gap',
+  ].includes(key)) {
+    return true;
+  }
   return (
     key.includes('revenue')
     || key.includes('collected')
     || key.includes('remaining')
     || key.includes('amount')
+    || key.includes('value')
     || key.includes('sales')
+    || key.includes('gap')
     || key.endsWith('_paid')
     || key.includes('overdue')
     || key.includes('financed')
@@ -47,4 +58,9 @@ export function isReportCurrencyKey(key) {
     || key.includes('monthly')
     || key.includes('total_amount')
   );
+}
+
+export function isReportPercentageKey(key) {
+  if (!key || typeof key !== 'string') return false;
+  return key.includes('percentage') || key.includes('percent') || key.includes('ratio');
 }

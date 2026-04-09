@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Banknote, FileText, AlertTriangle,
   Users, ShoppingCart, AlertCircle, Package, Receipt,
@@ -11,13 +11,18 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { dashboardAlertMessage } from '../../i18n/statusLabels';
 import { clsx } from 'clsx';
+import SuperAdminDashboardPage from './SuperAdminDashboardPage';
 
 export default function DashboardPage() {
   const { t } = useLang();
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  if (user?.is_super_admin) {
+    return <Navigate to="/platform/overview" replace />;
+  }
 
   useEffect(() => {
     dashboardApi.get().then(res => {

@@ -13,6 +13,10 @@ class CashboxService
 {
     private const MONEY_SCALE = 2;
 
+    public function __construct(
+        private readonly DocumentPostingService $documentPostingService,
+    ) {}
+
     /**
      * Optional cashbox tracking for cash customer/invoice payments.
      */
@@ -110,7 +114,7 @@ class CashboxService
         return DB::transaction(function () use ($cashbox, $data, $amount, $direction, $type, $userId) {
             $locked = Cashbox::whereKey($cashbox->id)->lockForUpdate()->firstOrFail();
 
-            return $this->pushTransaction(
+            $transaction = $this->pushTransaction(
                 $locked,
                 $type,
                 $direction,
@@ -121,6 +125,10 @@ class CashboxService
                 $data['reference_type'] ?? null,
                 isset($data['reference_id']) ? (int) $data['reference_id'] : null
             );
+
+            $this->documentPostingService->postManualCashTransaction($transaction, $userId);
+
+            return $transaction;
         });
     }
 
@@ -155,7 +163,7 @@ class CashboxService
         return DB::transaction(function () use ($cashbox, $data, $amount, $direction, $userId) {
             $locked = Cashbox::whereKey($cashbox->id)->lockForUpdate()->firstOrFail();
 
-            return $this->pushTransaction(
+            $transaction = $this->pushTransaction(
                 $locked,
                 CashTransaction::TYPE_MANUAL_ADJUSTMENT,
                 $direction,
@@ -166,6 +174,10 @@ class CashboxService
                 null,
                 null
             );
+
+            $this->documentPostingService->postManualCashTransaction($transaction, $userId);
+
+            return $transaction;
         });
     }
 

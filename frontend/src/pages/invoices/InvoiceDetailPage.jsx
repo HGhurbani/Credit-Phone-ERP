@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Receipt, Printer } from 'lucide-react';
 import Badge, { invoiceStatusBadge } from '../../components/ui/Badge';
 import { ConfirmModal } from '../../components/ui/Modal';
-import { invoicesApi } from '../../api/client';
+import { Pagination, useLocalPagination } from '../../components/ui/Table';
+import { cashboxesApi, invoicesApi } from '../../api/client';
 import { useLang } from '../../context/LangContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import toast from 'react-hot-toast';
+
+const PAYMENT_METHOD_KEY = {
+  cash: 'Cash',
+  bank_transfer: 'BankTransfer',
+  cheque: 'Cheque',
+  card: 'Card',
+  other: 'Other',
+};
 
 export default function InvoiceDetailPage() {
   const { id } = useParams();
@@ -19,16 +28,19 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cashboxes, setCashboxes] = useState([]);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [payForm, setPayForm] = useState({
     amount: '',
     payment_method: 'cash',
+    cashbox_id: '',
     payment_date: new Date().toISOString().split('T')[0],
     reference_number: '',
     collector_notes: '',
   });
 
   const canRecordPayment = hasPermission('payments.create');
+  const canViewCashboxes = hasPermission('cashboxes.view');
   const load = () => {
     invoicesApi.get(id)
       .then(r => {
@@ -48,6 +60,30 @@ export default function InvoiceDetailPage() {
 
   useEffect(() => { load(); }, [id]);
 
+  useEffect(() => {
+    if (!invoice || !canViewCashboxes || !invoice.branch?.id) {
+      setCashboxes([]);
+      return;
+    }
+
+    cashboxesApi.list({ branch_id: invoice.branch.id })
+      .then((r) => {
+        const rows = r.data.data || [];
+        setCashboxes(rows);
+        setPayForm((current) => {
+          if (current.cashbox_id) return current;
+          const preferred = rows.find((item) => item.is_primary) || rows[0];
+          return {
+            ...current,
+            cashbox_id: preferred ? String(preferred.id) : '',
+          };
+        });
+      })
+      .catch(() => {
+        setCashboxes([]);
+      });
+  }, [invoice, canViewCashboxes]);
+
   const handlePay = async (e) => {
     e.preventDefault();
     if (!invoice) return;
@@ -61,6 +97,7 @@ export default function InvoiceDetailPage() {
       await invoicesApi.recordPayment(invoice.id, {
         amount: amt,
         payment_method: payForm.payment_method,
+        cashbox_id: payForm.payment_method === 'cash' && payForm.cashbox_id ? Number(payForm.cashbox_id) : undefined,
         payment_date: payForm.payment_date,
         reference_number: payForm.reference_number || undefined,
         collector_notes: payForm.collector_notes || undefined,
@@ -96,11 +133,15 @@ export default function InvoiceDetailPage() {
       </div>
     );
   }
+  const payments = [...(invoice?.payments || [])].sort((a, b) => new Date(b.payment_date || 0) - new Date(a.payment_date || 0));
+  const itemsPagination = useLocalPagination(invoice?.items || []);
+  const paymentsPagination = useLocalPagination(payments);
   if (!invoice) return null;
 
   const statusMeta = invoiceStatusBadge(invoice.status);
   const canPay = canRecordPayment && ['unpaid', 'partial'].includes(invoice.status);
-  const canCancel = canRecordPayment && ['unpaid', 'partial'].includes(invoice.status);
+  const canCancel = hasPermission('invoices.update') && ['unpaid', 'partial'].includes(invoice.status);
+  const paymentMethodLabel = (method) => t(`collections.method${PAYMENT_METHOD_KEY[method] || 'Other'}`);
 
   return (
     <div className="w-full min-w-0 space-y-4">
@@ -147,25 +188,36 @@ export default function InvoiceDetailPage() {
         </p>
       )}
 
-      <div className="card overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t('products.name')}</th>
-              <th>{t('products.quantity')}</th>
-              <th>{t('common.amount')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoice.items?.map((line) => (
-              <tr key={line.id}>
-                <td>{line.description}</td>
-                <td>{line.quantity}</td>
-                <td>{formatCurrency(line.total)}</td>
+      <div className="card p-4">
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>{t('products.name')}</th>
+                <th>{t('products.quantity')}</th>
+                <th>{t('common.amount')}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {itemsPagination.rows.map((line) => (
+                <tr key={line.id}>
+                  <td>{line.description}</td>
+                  <td>{line.quantity}</td>
+                  <td>{formatCurrency(line.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          total={itemsPagination.total}
+          currentPage={itemsPagination.page}
+          lastPage={itemsPagination.lastPage}
+          perPage={itemsPagination.perPage}
+          pageSize={itemsPagination.pageSize}
+          onPageChange={itemsPagination.setPage}
+          onPageSizeChange={(value) => { itemsPagination.setPageSize(value); itemsPagination.setPage(1); }}
+        />
       </div>
 
       {canPay && (
@@ -191,7 +243,7 @@ export default function InvoiceDetailPage() {
               <label className="label">{t('collections.paymentMethod')} *</label>
               <select
                 value={payForm.payment_method}
-                onChange={e => setPayForm(p => ({ ...p, payment_method: e.target.value }))}
+                onChange={e => setPayForm(p => ({ ...p, payment_method: e.target.value, cashbox_id: e.target.value === 'cash' ? p.cashbox_id : '' }))}
                 className="input"
               >
                 <option value="cash">{t('collections.methodCash')}</option>
@@ -201,6 +253,23 @@ export default function InvoiceDetailPage() {
                 <option value="other">{t('collections.methodOther')}</option>
               </select>
             </div>
+            {payForm.payment_method === 'cash' && canViewCashboxes && (
+              <div>
+                <label className="label">{t('journal.cashbox')}</label>
+                <select
+                  value={payForm.cashbox_id}
+                  onChange={e => setPayForm(p => ({ ...p, cashbox_id: e.target.value }))}
+                  className="input"
+                >
+                  <option value="">{t('invoices.selectCashbox')}</option>
+                  {cashboxes.map((cashbox) => (
+                    <option key={cashbox.id} value={cashbox.id}>
+                      {cashbox.name}{cashbox.is_primary ? ` (${t('cash.primary')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">{t('collections.paymentDate')} *</label>
               <input
@@ -239,6 +308,55 @@ export default function InvoiceDetailPage() {
           </form>
         </div>
       )}
+
+      <div className="card p-4">
+        <h2 className="font-semibold text-gray-900 mb-3">{t('invoices.paymentHistory')}</h2>
+        {payments.length === 0 ? (
+          <p className="text-sm text-gray-500">{t('common.noData')}</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('collections.receiptNumber')}</th>
+                    <th>{t('common.date')}</th>
+                    <th>{t('collections.paymentMethod')}</th>
+                    <th>{t('common.amount')}</th>
+                    <th>{t('common.by')}</th>
+                    <th>{t('common.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentsPagination.rows.map((payment) => (
+                    <tr key={payment.id}>
+                      <td className="font-mono text-xs">{payment.receipt_number || t('common.emDash')}</td>
+                      <td>{formatDate(payment.payment_date)}</td>
+                      <td>{paymentMethodLabel(payment.payment_method)}</td>
+                      <td>{formatCurrency(payment.amount)}</td>
+                      <td>{payment.collected_by?.name || t('common.emDash')}</td>
+                      <td>
+                        <Link to={`/print/payment/${payment.id}`} className="text-primary-600 hover:underline text-sm">
+                          {t('collections.printReceipt')}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              total={paymentsPagination.total}
+              currentPage={paymentsPagination.page}
+              lastPage={paymentsPagination.lastPage}
+              perPage={paymentsPagination.perPage}
+              pageSize={paymentsPagination.pageSize}
+              onPageChange={paymentsPagination.setPage}
+              onPageSizeChange={(value) => { paymentsPagination.setPageSize(value); paymentsPagination.setPage(1); }}
+            />
+          </>
+        )}
+      </div>
 
       {!canRecordPayment && ['unpaid', 'partial'].includes(invoice.status) && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{t('invoices.noPaymentPermission')}</p>

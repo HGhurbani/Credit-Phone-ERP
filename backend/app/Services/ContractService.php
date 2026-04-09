@@ -9,7 +9,6 @@ use App\Models\Inventory;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Support\TenantBranchScope;
-use App\Support\TenantSettings;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 class ContractService
 {
+    public function __construct(
+        private readonly DocumentPostingService $documentPostingService,
+    ) {}
+
     public function createFromOrder(Order $order, array $data, User $user): InstallmentContract
     {
         return DB::transaction(function () use ($order, $data, $user) {
@@ -52,8 +55,11 @@ class ContractService
             $firstDueDate = Carbon::parse($data['first_due_date']);
             $durationMonths = (int) $data['duration_months'];
             $downPayment = (float) $data['down_payment'];
+            $monthlyAmountInput = array_key_exists('monthly_amount', $data) && $data['monthly_amount'] !== null && $data['monthly_amount'] !== ''
+                ? (float) $data['monthly_amount']
+                : null;
 
-            $pricing = $this->computeInstallmentPricing($order, $durationMonths, $downPayment);
+            $pricing = $this->computeInstallmentPricing($order, $durationMonths, $downPayment, $monthlyAmountInput);
 
             $monthlyAmount = $pricing['monthly_amount'];
             $financedAmount = $pricing['financed_amount'];
@@ -89,6 +95,8 @@ class ContractService
 
             $order->update(['status' => 'converted_to_contract']);
 
+            $this->documentPostingService->postInstallmentContract($contract, $userId);
+
             return $contract->load(['customer', 'order', 'schedules']);
         });
     }
@@ -122,67 +130,71 @@ class ContractService
     }
 
     /**
-     * @return array{monthly_amount: float, financed_amount: float}
+     * @return array{monthly_amount: float, financed_amount: float, minimum_down_payment: float}
      */
-    private function computeInstallmentPricing(Order $order, int $durationMonths, float $downPayment): array
+    private function computeInstallmentPricing(
+        Order $order,
+        int $durationMonths,
+        float $downPayment,
+        ?float $requestedMonthlyAmount = null
+    ): array
     {
-        $mode = TenantSettings::string($order->tenant_id, 'installment_pricing_mode', 'percentage');
+        $orderTotal = $this->money((float) $order->total);
+        $minimumDownPayment = $this->computeMinimumDownPayment($order);
 
-        $cashTotal = (float) $order->items->sum(fn ($i) => (float) $i->product->cash_price * $i->quantity);
-
-        if ($mode === 'percentage') {
-            $defaultPercent = TenantSettings::float($order->tenant_id, 'installment_monthly_percent_of_cash', 5.0);
-            $weighted = 0.0;
-            foreach ($order->items as $item) {
-                $lineCash = (float) $item->product->cash_price * $item->quantity;
-                $p = $item->product->monthly_percent_of_cash !== null
-                    ? (float) $item->product->monthly_percent_of_cash
-                    : $defaultPercent;
-                $weighted += $lineCash * $p;
-            }
-            $effectivePercent = $cashTotal > 0 ? $weighted / $cashTotal : $defaultPercent;
-            $monthlyAmount = round($cashTotal * ($effectivePercent / 100), 2);
-        } else {
-            $sum = 0.0;
-            foreach ($order->items as $item) {
-                $fm = $item->product->fixed_monthly_amount;
-                if ($fm === null) {
-                    throw ValidationException::withMessages([
-                        'order_id' => ['Product "'.$item->product->name.'" is missing fixed monthly amount (fixed installment mode).'],
-                    ]);
-                }
-                $sum += (float) $fm * $item->quantity;
-            }
-            $monthlyAmount = round($sum, 2);
+        if ($minimumDownPayment > $orderTotal + 0.01) {
+            throw ValidationException::withMessages([
+                'order_id' => ['Configured minimum down payment exceeds the order total. Review product installment prices and minimum down payment values.'],
+            ]);
         }
+
+        $downPayment = $this->money($downPayment);
+
+        if ($downPayment + 0.01 < $minimumDownPayment) {
+            throw ValidationException::withMessages([
+                'down_payment' => [
+                    'Down payment cannot be less than the minimum required amount of '.number_format($minimumDownPayment, 2).'.',
+                ],
+            ]);
+        }
+
+        if ($downPayment + 0.01 >= $orderTotal) {
+            throw ValidationException::withMessages([
+                'down_payment' => ['Down payment must be less than the order total so at least one installment remains.'],
+            ]);
+        }
+
+        $financedAmount = $this->money($orderTotal - $downPayment);
+        $monthlyAmount = $durationMonths === 1
+            ? $financedAmount
+            : (
+                $requestedMonthlyAmount !== null
+                    ? $this->ceilMoney($requestedMonthlyAmount)
+                    : $this->ceilMoney($financedAmount / $durationMonths)
+            );
 
         if ($monthlyAmount <= 0) {
             throw ValidationException::withMessages([
-                'order_id' => ['Calculated monthly installment must be greater than zero.'],
+                'monthly_amount' => ['Monthly installment must be greater than zero.'],
             ]);
         }
 
-        $financedAmount = round($monthlyAmount * $durationMonths, 2);
-        $orderTotal = (float) $order->total;
+        if ($durationMonths > 1) {
+            $lastInstallment = $this->money($financedAmount - ($monthlyAmount * ($durationMonths - 1)));
 
-        if ($orderTotal + 0.01 < $financedAmount) {
-            throw ValidationException::withMessages([
-                'duration_months' => ['Order total is less than the financed amount for the selected duration.'],
-            ]);
-        }
-
-        $expectedDown = round($orderTotal - $financedAmount, 2);
-        if (abs($expectedDown - $downPayment) > 0.05) {
-            throw ValidationException::withMessages([
-                'down_payment' => [
-                    'Down payment must be '.number_format($expectedDown, 2).' to match the order total and the installment schedule (financed: '.number_format($financedAmount, 2).'). You entered: '.number_format($downPayment, 2).'.',
-                ],
-            ]);
+            if ($lastInstallment <= 0) {
+                throw ValidationException::withMessages([
+                    'monthly_amount' => [
+                        'Monthly installment is too high for the selected duration and down payment. Lower the monthly amount or increase the duration.',
+                    ],
+                ]);
+            }
         }
 
         return [
             'monthly_amount' => $monthlyAmount,
             'financed_amount' => $financedAmount,
+            'minimum_down_payment' => $minimumDownPayment,
         ];
     }
 
@@ -268,24 +280,50 @@ class ContractService
     {
         $schedules = [];
         $dueDate = Carbon::parse($contract->first_due_date);
+        $remainingAmount = $this->money((float) $contract->financed_amount);
+        $monthlyAmount = $this->money((float) $contract->monthly_amount);
 
         for ($i = 1; $i <= $contract->duration_months; $i++) {
+            $amount = $i === $contract->duration_months
+                ? $remainingAmount
+                : $monthlyAmount;
+
             $schedules[] = [
                 'contract_id' => $contract->id,
                 'tenant_id' => $contract->tenant_id,
                 'installment_number' => $i,
                 'due_date' => $dueDate->copy(),
-                'amount' => $contract->monthly_amount,
+                'amount' => $amount,
                 'paid_amount' => 0,
-                'remaining_amount' => $contract->monthly_amount,
+                'remaining_amount' => $amount,
                 'status' => $dueDate->isToday() ? 'due_today' : ($dueDate->isPast() ? 'overdue' : 'upcoming'),
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
+            $remainingAmount = $this->money(max(0, $remainingAmount - $amount));
             $dueDate->addMonth();
         }
 
         InstallmentSchedule::insert($schedules);
+    }
+
+    private function computeMinimumDownPayment(Order $order): float
+    {
+        return $this->money((float) $order->items->sum(function ($item) {
+            $minDownPayment = $item->product->min_down_payment ?? 0;
+
+            return max(0, (float) $minDownPayment) * (int) $item->quantity;
+        }));
+    }
+
+    private function money(float $value): float
+    {
+        return round($value, 2);
+    }
+
+    private function ceilMoney(float $value): float
+    {
+        return (float) ceil($value - 0.0000001);
     }
 
     public function recordPayment(InstallmentContract $contract, array $data, int $userId): array

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge, { contractStatusBadge } from '../../components/ui/Badge';
 import { contractsApi } from '../../api/client';
@@ -19,18 +19,19 @@ export default function ContractsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
 
   const debouncedSearch = useDebounce(search, 400);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await contractsApi.list({ search: debouncedSearch, status: statusFilter, page, per_page: 15 });
+      const res = await contractsApi.list({ search: debouncedSearch, status: statusFilter, page, per_page: getPerPageRequestValue(perPage) });
       setContracts(res.data.data);
       setMeta(res.data.meta);
     } catch { toast.error(t('common.error')); }
     finally { setLoading(false); }
-  }, [debouncedSearch, statusFilter, page, t]);
+  }, [debouncedSearch, statusFilter, page, perPage, t]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -68,7 +69,12 @@ export default function ContractsPage() {
       </div>
 
       <DataTable columns={columns} data={contracts} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
     </div>
   );
 }

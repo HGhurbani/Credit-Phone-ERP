@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
@@ -31,6 +31,7 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -43,7 +44,7 @@ export default function SuppliersPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await suppliersApi.list({ search: debouncedSearch, page, per_page: 15 });
+      const res = await suppliersApi.list({ search: debouncedSearch, page, per_page: getPerPageRequestValue(perPage) });
       setRows(res.data.data);
       setMeta(res.data.meta);
     } catch {
@@ -51,7 +52,7 @@ export default function SuppliersPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, page, t]);
+  }, [debouncedSearch, page, perPage, t]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -160,7 +161,12 @@ export default function SuppliersPage() {
       </div>
 
       <DataTable columns={columns} data={rows} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
 
       <Modal
         open={modalOpen}

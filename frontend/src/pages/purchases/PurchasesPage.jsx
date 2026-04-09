@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Eye } from 'lucide-react';
-import { DataTable, Pagination } from '../../components/ui/Table';
+import { DataTable, Pagination, getPerPageRequestValue } from '../../components/ui/Table';
 import SearchInput from '../../components/ui/SearchInput';
 import Badge from '../../components/ui/Badge';
 import { Select } from '../../components/ui/FormField';
@@ -26,6 +26,7 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [status, setStatus] = useState('');
   const [branchId, setBranchId] = useState('');
   const [branches, setBranches] = useState([]);
@@ -42,7 +43,7 @@ export default function PurchasesPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { search: debouncedSearch, page, per_page: 15 };
+      const params = { search: debouncedSearch, page, per_page: getPerPageRequestValue(perPage) };
       if (status) params.status = status;
       if (branchId) params.branch_id = branchId;
       const res = await purchaseOrdersApi.list(params);
@@ -53,7 +54,7 @@ export default function PurchasesPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, page, status, branchId, t]);
+  }, [debouncedSearch, page, perPage, status, branchId, t]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -121,7 +122,12 @@ export default function PurchasesPage() {
       </div>
 
       <DataTable columns={columns} data={rows} loading={loading} />
-      <Pagination meta={meta} onPageChange={setPage} />
+      <Pagination
+        meta={meta}
+        onPageChange={setPage}
+        pageSize={perPage}
+        onPageSizeChange={(value) => { setPerPage(value); setPage(1); }}
+      />
     </div>
   );
 }

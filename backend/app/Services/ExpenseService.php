@@ -11,6 +11,7 @@ class ExpenseService
 {
     public function __construct(
         private readonly CashboxService $cashboxService,
+        private readonly DocumentPostingService $documentPostingService,
     ) {}
 
     public function generateExpenseNumber(int $tenantId): string
@@ -61,6 +62,8 @@ class ExpenseService
                 $this->cashboxService->recordExpenseOut($expense, $cashbox, $userId);
             }
 
+            $this->documentPostingService->postExpense($expense, $userId);
+
             return $expense->load(['branch', 'cashbox', 'createdBy']);
         });
     }
@@ -101,6 +104,7 @@ class ExpenseService
                 $this->cashboxService->recordExpenseReversalIn($expense, $cashbox, $userId);
             }
 
+            $this->documentPostingService->reverseExpense($expense, $userId);
             $expense->update(['status' => 'cancelled']);
 
             return $expense->fresh(['branch', 'cashbox', 'createdBy']);

@@ -16,6 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 class GoodsReceiptService
 {
+    public function __construct(
+        private readonly DocumentPostingService $documentPostingService,
+    ) {}
+
     public function generateReceiptNumber(int $tenantId): string
     {
         $prefix = 'GR-'.str_pad((string) $tenantId, 3, '0', STR_PAD_LEFT).'-';
@@ -103,6 +107,8 @@ class GoodsReceiptService
             }
 
             $this->syncPurchaseOrderStatus($locked->fresh());
+
+            $this->documentPostingService->postGoodsReceipt($receipt, $user->id);
 
             return $receipt->load(['items.purchaseOrderItem.product', 'receivedBy', 'branch']);
         });
