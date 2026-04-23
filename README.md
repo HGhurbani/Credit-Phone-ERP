@@ -1,70 +1,106 @@
-# Credit Phone ERP System
+# Credit Phone ERP
 
-A production-ready multi-tenant SaaS ERP system for installment-based electronics retail businesses.
+A production-ready, multi-tenant ERP platform for electronics retailers that sell through cash and installment plans.
 
-## Tech Stack
+## Executive Summary
+
+Credit Phone ERP helps organizations run day-to-day retail operations end to end:
+
+- Customer lifecycle management
+- Product, inventory, and branch operations
+- Order processing (cash + installment)
+- Installment contract generation and collection workflows
+- Invoice and receipt handling
+- Financial and operational reporting
+- Role-based access control across company and branch users
+
+The system is designed for SaaS operation where each tenant (company) has isolated business data, users, settings, and workflows.
+
+## Technology Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Backend | Laravel 12, PHP 8.2 |
-| Frontend | React 19, Vite 8 |
-| Database | MySQL (مُعدّ محليًا) — يمكن استخدام SQLite للتجربة السريعة |
-| Auth | Laravel Sanctum (token-based) |
-| Permissions | Spatie Laravel Permission |
-| Styling | Tailwind CSS v4 |
+|---|---|
+| Backend API | Laravel 12, PHP 8.2 |
+| Frontend SPA | React 19, Vite 8 |
+| Database | MySQL (SQLite optional for quick local experiments) |
+| Authentication | Laravel Sanctum |
+| Authorization | Spatie Laravel Permission |
+| UI Styling | Tailwind CSS v4 |
 | HTTP Client | Axios |
-| State | React Context + Local state |
 
-## Project Structure
+## Repository Structure
 
-```
-erp_sys_cp/
-├── backend/           # Laravel API
-│   ├── app/
-│   │   ├── Http/
-│   │   │   ├── Controllers/Api/    # All API controllers
-│   │   │   ├── Middleware/         # EnsureTenantAccess
-│   │   │   ├── Requests/           # Form Request validations
-│   │   │   └── Resources/          # API Resource transformers
-│   │   ├── Models/                 # All Eloquent models
-│   │   ├── Services/               # Business logic services
-│   │   └── Support/                # TenantSettings helpers
-│   ├── database/
-│   │   ├── migrations/             # All DB migrations
-│   │   └── seeders/                # Demo data seeders
-│   └── routes/api.php              # All API routes
-│
-└── frontend/          # React SPA
-    └── src/
-        ├── api/           # Axios client & API helpers
-        ├── components/    # Reusable UI components
-        │   ├── layout/    # Sidebar, Topbar, AppLayout
-        │   └── ui/        # Table, Modal, Badge, etc.
-        ├── context/       # AuthContext, LangContext
-        ├── hooks/         # Custom hooks
-        ├── i18n/          # Arabic & English translations
-        ├── pages/         # All page components
-        ├── constants/     # Shared constants (e.g. installment duration presets)
-        └── utils/         # format helpers (currency, dates, numbers)
+```text
+Credit-Phone-ERP/
+├── backend/                    # Laravel API application
+├── frontend/                   # React single-page application
+├── docs/                       # Deployment and product documentation
+└── README.md                   # Project overview
 ```
 
-## Getting Started
+## Core Modules
 
-### Backend Setup
+- **Tenant & Branch Management**: Isolated companies with independent users, branches, settings, and transactions.
+- **User & Role Management**: Configurable role-based permissions for admin, manager, sales, collector, and accountant personas.
+- **Customer Management**: Customer profiles, account statements, contract history, and collection notes.
+- **Catalog & Inventory**: Categories, brands, products, stock levels, stock movements, and branch-level inventory visibility.
+- **Sales & Orders**: Draft, approval, and fulfillment lifecycle for cash and installment orders.
+- **Installment Contracts**: Contract creation, financed amount tracking, and schedule generation.
+- **Collections**: Due/overdue monitoring, payment posting, and automated balance reconciliation.
+- **Billing**: Invoice and receipt records for auditability.
+- **Reporting**: Sales, collections, contracts, overdue installments, branch, and agent performance reports.
+
+## Role Model (Default)
+
+| Role | Typical Responsibility |
+|---|---|
+| `super_admin` | Platform-level administration across tenants |
+| `company_admin` | Full company operations and configuration |
+| `branch_manager` | Branch-level supervision and operations |
+| `sales_agent` | Customer onboarding and order entry |
+| `collector` | Installment follow-up and payment collection |
+| `accountant` | Financial review, reporting, and reconciliation |
+
+## Key Business Workflows
+
+### 1) Order Workflow
+1. Select or create customer.
+2. Add products and choose cash/installment type.
+3. Save as draft.
+4. Manager approves or rejects.
+5. On approval:
+   - **Cash**: invoice generation + stock deduction.
+   - **Installment**: convert order into contract.
+
+### 2) Contract Workflow
+1. Convert approved installment order to contract.
+2. Enter down payment, duration, and dates.
+3. System validates financed calculations and business constraints.
+4. Schedule is generated and contract is activated.
+
+### 3) Collection Workflow
+1. Monitor due/overdue installments.
+2. Record payment against schedule.
+3. System updates remaining balance and contract status.
+4. Receipt is generated for traceability.
+
+## Quick Start
+
+### Backend
 
 ```bash
 cd backend
 composer install
 cp .env.example .env
 php artisan key:generate
-# Edit .env to set your DB credentials (MySQL for production)
+# Configure DB credentials in .env
 php artisan migrate
 php artisan db:seed
 php artisan storage:link
 php artisan serve
 ```
 
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
@@ -72,210 +108,45 @@ npm install
 npm run dev
 ```
 
-## الأدوار والصلاحيات (Roles & Permissions)
-
-الصلاحيات مُعرَّفة في **Spatie Laravel Permission** (`database/seeders/RolePermissionSeeder.php`).  
-أسماء الصلاحيات مثل: `customers.view`, `orders.create`, `payments.collections`, … إلخ.
-
-### دور كل مستخدم — ماذا يظهر في القائمة الجانبية؟
-
-| الدور | الوصف | أهم ما يظهر له |
-|--------|--------|-----------------|
-| **super_admin** | مدير المنصة (كل المستأجرين لاحقاً) | **كل الشاشات** — يتجاوز فحص الصلاحية في الواجهة (`is_super_admin`) |
-| **company_admin** | مدير الشركة (مستأجر واحد) | لوحة التحكم، العملاء، المنتجات، الطلبات، العقود، التحصيل، الفواتير، التقارير، المستخدمون، الفروع، الإعدادات |
-| **branch_manager** | مدير فرع | نفس العمليات التشغيلية للفرع؛ **لا** حذف مستخدمين/فروع على مستوى الشركة إن لم تُضف لاحقاً في السياسات — الصلاحيات الحالية أوسع من موظف مبيعات (اعتماد طلبات، تقارير، …) |
-| **sales_agent** | موظف مبيعات | لوحة التحكم، **العملاء**، **المنتجات** (عرض)، **الطلبات** (إنشاء/عرض) — **بدون** عقود، تحصيل، فواتير إدارية، تقارير مالية، مستخدمين، فروع، إعدادات |
-| **collector** | محصل | لوحة التحكم، عملاء (عرض)، **عقود**، **تحصيل**، **فواتير** (عرض) |
-| **accountant** | محاسب | لوحة التحكم، عملاء/طلبات/عقود (عرض)، تحصيل (عرض)، فواتير، **تقارير** وتصدير |
-
-> **التحكم في الواجهة:** القائمة الجانبية تُصفّى حسب `permissions` المرسلة مع المستخدم (بعد تسجيل الدخول أو `/auth/me`).  
-> **التحكم في الـ API:** حالياً معظم المسارات محمية بـ `auth:sanctum` + `tenant.access` فقط؛ لفرض الصلاحية على كل endpoint يُفضّل إضافة `middleware('permission:...')` أو **Policies** على المدخلات الحساسة.
-
-### كيف تعدّل الصلاحيات؟
-
-1. **إضافة/تعديل أدوار:** في لوحة الإدارة (مستقبلاً) أو عبر Tinker / جداول `roles` و `role_has_permissions`.  
-2. **ربط مستخدم بدور:** جدول `model_has_roles` أو `$user->assignRole('sales_agent')`.  
-3. **إعادة التشغيل بعد تعديل الصلاحيات:**  
-   `php artisan permission:cache-reset` (إن كان التخزين المؤقت مفعّلاً).
-
-## Demo Credentials
+## Example Local Credentials (Seed Data)
 
 | Role | Email | Password |
-|------|-------|----------|
+|---|---|---|
 | Super Admin | superadmin@creditphone.com | password |
 | Company Admin | admin@creditphone.com | password |
 | Sales Agent | agent@creditphone.com | password |
 | Collector | collector@creditphone.com | password |
 
-## API Endpoints
+## API Surface (Selected)
 
-| Endpoint | Description |
-|----------|-------------|
-| POST /api/auth/login | Login |
-| GET /api/auth/me | Current user |
-| POST /api/auth/logout | Logout |
-| GET /api/dashboard | Dashboard stats |
-| GET /api/customers | List customers |
-| POST /api/customers | Create customer |
-| GET/PUT/DELETE /api/customers/{id} | CRUD |
-| GET /api/products | List products |
-| POST /api/products | Create product |
-| POST /api/products/{id}/stock | Adjust stock |
-| GET /api/orders | List orders |
-| POST /api/orders | Create order |
-| POST /api/orders/{id}/approve | Approve order |
-| POST /api/orders/{id}/reject | Reject order |
-| GET /api/contracts | List contracts |
-| POST /api/contracts | Create contract from order |
-| GET /api/contracts/{id}/schedules | Get schedules |
-| GET /api/collections/due-today | Due today |
-| GET /api/collections/overdue | Overdue |
-| POST /api/payments | Record payment |
-| GET /api/invoices | List invoices |
-| GET /api/branches | List branches |
-| GET /api/users | List users |
-| GET /api/reports/sales | Sales report |
-| GET /api/reports/collections | Collections report |
-| GET /api/reports/active-contracts | Active contracts |
-| GET /api/reports/overdue-installments | Overdue report |
-| GET /api/reports/branch-performance | Branch stats |
-| GET /api/reports/agent-performance | Agent stats |
-| GET /api/settings | Tenant key/value settings (JSON) |
-| PUT /api/settings | Update tenant settings (`body.settings` object) |
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/auth/login` | User login |
+| `GET /api/auth/me` | Fetch current user and permissions |
+| `GET /api/dashboard` | Dashboard metrics |
+| `GET/POST /api/customers` | Customer list/create |
+| `GET/POST /api/products` | Product list/create |
+| `GET/POST /api/orders` | Order list/create |
+| `POST /api/orders/{id}/approve` | Approve order |
+| `GET/POST /api/contracts` | Contract list/create |
+| `GET /api/collections/due-today` | Collection queue for due installments |
+| `POST /api/payments` | Record payment |
+| `GET /api/invoices` | Invoice list |
+| `GET /api/reports/*` | Operational and financial reports |
+| `GET/PUT /api/settings` | Tenant settings |
 
-## Roles & Permissions
+## Deployment Notes
 
-| Role | Description |
-|------|-------------|
-| super_admin | Platform administrator, manages all tenants |
-| company_admin | Manages one tenant fully |
-| branch_manager | Manages branch operations |
-| sales_agent | Creates orders and customers |
-| collector | Records payments and collections |
-| accountant | Views financial reports |
+For Hostinger shared hosting deployment and environment examples, see:
 
-## Database Schema
+- `docs/hostinger-shared-hosting.md`
 
-Core tables:
-- `tenants` - Multi-tenant companies
-- `branches` - Branches per tenant
-- `users` - Users with tenant/branch assignment
-- `customers` - Customer profiles
-- `guarantors` - Customer guarantors
-- `customer_documents` - Uploaded docs
-- `products` - Product catalog (`cash_price`, `installment_price`, optional `cost_price`, `min_down_payment`, `allowed_durations`, `monthly_percent_of_cash`, `fixed_monthly_amount`, …)
-- `categories` / `brands` - Product taxonomy
-- `inventories` - Stock per branch
-- `stock_movements` - Stock audit log
-- `orders` - Cash/installment orders
-- `order_items` - Order line items
-- `installment_contracts` - Contracts
-- `installment_schedules` - Monthly schedule per contract
-- `invoices` - Invoice records
-- `payments` - Payment records
-- `receipts` - Receipt records
-- `collection_logs` - Collection activity
-- `settings` - Tenant settings
-- `audit_logs` - Audit trail
+For detailed product and operations documentation, see:
 
-## Business Workflows
+- `docs/system-guide-ar.md` (full system guide in English)
+- `docs/tenant-guide-ar.md` (tenant operations guide in English)
+- `docs/qatar-compliance-checklist.md`
 
-### Order Flow
-1. Select/create customer → Add products → Choose type (cash/installment) → Save as draft
-2. Manager approves order
-3. If cash: auto-generate invoice, deduct stock
-4. If installment: convert to contract
+## License
 
-### Contract Flow
-1. Approved installment order → **Convert to contract** → Enter **down payment**, **duration (months)**, dates.
-2. **Monthly installment** is computed server-side from tenant **installment pricing mode** and product lines (see below). **Financed amount** = monthly × duration. **Expected down payment** = order total − financed amount; the entered down payment must match (within a small tolerance) or the API returns 422.
-3. Contract stores `down_payment` and `financed_amount`; **schedule & remaining balance** track the financed portion only (down payment is not applied as a schedule line).
-4. System generates the full installment schedule; stock is deducted; order status → `converted_to_contract`.
-
-### Installment pricing (tenant + products)
-
-Configured under **Settings** (`installment_pricing_mode`):
-
-| Mode | Behaviour |
-|------|-----------|
-| **percentage** (default) | Monthly installment = weighted % of **cash** line totals; per-product override `monthly_percent_of_cash`, else tenant default `installment_monthly_percent_of_cash`. |
-| **fixed** | Monthly installment = sum of (per-line `fixed_monthly_amount` × qty); products require min down payment and allowed durations; `installment_price` can be derived on save. |
-
-**UI:** contract duration uses quick presets (e.g. 3, 4, 5, 6, 12 months) plus manual entry (validated **max 60** months, aligned with `StoreContractRequest`). Product “allowed durations” uses the same preset idea plus optional custom months.
-
-### Display: numbers in Arabic UI
-
-Currency, dates, and numeric labels use **`Intl`** with **`numberingSystem: 'latn'`** (`frontend/src/utils/format.js`) so digits show as **0–9 (Western)** even when the interface language is Arabic.
-
-### Collection Flow
-1. View due today / overdue schedules
-2. Record payment → apply to schedule automatically
-3. Contract balance updates automatically
-4. Receipt generated
-5. Contract status updates (active/overdue/completed)
-
-## Language Support
-
-- Arabic (RTL) - default
-- English (LTR)
-- Switch via language button in topbar
-- All UI labels, statuses, and messages are translatable
-- i18n files: `frontend/src/i18n/ar.js` and `frontend/src/i18n/en.js`
-- Formatted amounts and dates use Latin digits (see **Display: numbers in Arabic UI** above)
-
-## MySQL — تشغيل محلي (Local)
-
-1. **شغّل خدمة MySQL** (XAMPP / Laragon / MySQL Server / MariaDB) وتأكد أن المنفذ `3306` يعمل.
-
-2. **أنشئ قاعدة البيانات** (مرة واحدة)، من سطر أوامر MySQL أو phpMyAdmin:
-
-   ```sql
-   CREATE DATABASE credit_phone_erp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   ```
-
-3. **عدّل `backend/.env`** (القيم الافتراضية للتطوير المحلي):
-
-   ```env
-   DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_DATABASE=credit_phone_erp
-   DB_USERNAME=root
-   DB_PASSWORD=          # ضع كلمة المرور إن وُجدت
-   ```
-
-4. **طبّق الجداول والبيانات التجريبية:**
-
-   ```bash
-   cd backend
-   php artisan config:clear
-   php artisan migrate --force
-   php artisan db:seed --force
-   php artisan storage:link
-   ```
-
-5. **شغّل الخادم والواجهة:**
-
-   ```bash
-   # Terminal 1 — API
-   php artisan serve
-
-   # Terminal 2 — React (من مجلد المشروع)
-   cd ../frontend && npm run dev
-   ```
-
-   - الواجهة: [http://localhost:5173](http://localhost:5173)  
-   - الـ API: [http://localhost:8000](http://localhost:8000)
-
-إذا فشل الاتصال بـ MySQL، تحقق من تشغيل الخدمة، ومن اسم المستخدم/كلمة المرور، وأن قاعدة `credit_phone_erp` موجودة.
-
-### العودة إلى SQLite (بدون MySQL)
-
-في `backend/.env`:
-
-```env
-DB_CONNECTION=sqlite
-DB_DATABASE=database/database.sqlite
-```
-
-ثم احذف أسطر `DB_HOST` و`DB_USERNAME` و`DB_PASSWORD` أو علّقها، وأنشئ الملف `database/database.sqlite` إن لزم.
+This repository is proprietary unless your organization defines a separate license agreement.
